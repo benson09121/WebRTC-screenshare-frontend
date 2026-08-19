@@ -3,17 +3,45 @@ import { useWebRTC } from '../context/WebRTCContext';
 import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Settings } from 'lucide-react';
 
 const QUALITY_PRESETS = {
-  '1080p60': { label: '1080p @ 60fps', width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 60 }, bitrate: 20000000 },
-  '1080p30': { label: '1080p @ 30fps', width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 30 }, bitrate: 10000000 },
-  '720p60': { label: '720p @ 60fps', width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 60 }, bitrate: 8000000 },
-  '480p': { label: '480p @ 30fps', width: { ideal: 854, max: 854 }, height: { ideal: 480, max: 480 }, frameRate: { ideal: 30 }, bitrate: 2500000 },
+  '1080p': { label: '1080p (60fps)', width: 1920, height: 1080, frameRate: 60 },
+  '720p':  { label: '720p (30fps)',  width: 1280, height: 720,  frameRate: 30 },
+  '480p':  { label: '480p (30fps)',  width: 854,  height: 480,  frameRate: 30 }
 };
 
-export const ControlPanel = () => {
-  const { startCall, endCall, setLocalMediaStream, localStream, getSender, connected, isScreenSharing, setIsScreenSharing, isCameraOff, setIsCameraOff, isMuted, setIsMuted } = useWebRTC();
+const createEmptyAudioTrack = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = ctx.createOscillator();
+    const dst = oscillator.connect(ctx.createMediaStreamDestination());
+    oscillator.start();
+    const track = dst.stream.getAudioTracks()[0];
+    track.enabled = false;
+    return track;
+  } catch (e) {
+    return null;
+  }
+};
+
+const createEmptyVideoTrack = ({ width, height }) => {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').fillRect(0, 0, width, height);
+    const stream = canvas.captureStream();
+    const track = stream.getVideoTracks()[0];
+    track.enabled = false;
+    return track;
+  } catch (e) {
+    return null;
+  }
+};
+
+export const ControlPanel = ({ isIdle }) => {
+  const { startCall, endCall, setCameraStream, setScreenStream, localStream, localScreenStream, getSender, connected, isScreenSharing, setIsScreenSharing, isCameraOff, setIsCameraOff, isMuted, setIsMuted, sendControlMessage } = useWebRTC();
   
   const [showSettings, setShowSettings] = useState(false);
-  const [quality, setQuality] = useState('1080p60');
+  const [quality, setQuality] = useState('1080p');
   const [contentType, setContentType] = useState('motion'); // 'motion' (Movie) or 'detail' (Text)
   const [isConnecting, setIsConnecting] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -35,28 +63,52 @@ export const ControlPanel = () => {
   const startCamera = async () => {
     try {
       setCameraError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: true
-      });
       
-      // Apply default state immediately
-      stream.getVideoTracks().forEach(track => track.enabled = !isCameraOff);
-      stream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+      const constraints = {};
+      
+      if (!isMuted) {
+        constraints.audio = selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true;
+      }
+      if (!isCameraOff) {
+        constraints.video = { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" };
+      }
 
-      setLocalMediaStream(stream);
+      // If both are off, generate dummy tracks to force WebRTC sendrecv negotiation!
+      // This prevents the connection from being stuck on "Waiting for connection"
+      if (!constraints.audio && !constraints.video) {
+        const tracks = [];
+        const dummyAudio = createEmptyAudioTrack();
+        const dummyVideo = createEmptyVideoTrack({ width: 640, height: 480 });
+        if (dummyAudio) tracks.push(dummyAudio);
+        if (dummyVideo) tracks.push(dummyVideo);
+        
+        setCameraStream(new MediaStream(tracks));
+        setIsScreenSharing(false);
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+          getDevices();
+        }
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Media API requires HTTPS or Localhost");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setCameraStream(stream);
       setIsScreenSharing(false);
       
-      // Fetch devices after permission is granted so labels are populated
       getDevices();
     } catch (err) {
-      console.error("Failed to start camera", err);
+      console.error("Failed to start media devices", err);
       setCameraError(err.name === 'NotAllowedError' ? 'Permission Denied' : err.message);
     }
   };
 
   const getDevices = async () => {
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(device => device.kind === 'audioinput');
       setAudioDevices(audioInputs);
@@ -78,66 +130,161 @@ export const ControlPanel = () => {
     const deviceId = e.target.value;
     setSelectedAudioDevice(deviceId);
     
-    try {
-      const newAudioStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: { exact: deviceId } }
-      });
-      const newAudioTrack = newAudioStream.getAudioTracks()[0];
-      newAudioTrack.enabled = !isMuted;
-      
-      if (localStream) {
-        const oldAudioTrack = localStream.getAudioTracks()[0];
-        if (oldAudioTrack) oldAudioTrack.stop();
+    // Only acquire the hardware track immediately if the microphone is currently ON
+    if (!isMuted) {
+      try {
+        const newAudioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: deviceId } }
+        });
+        const newAudioTrack = newAudioStream.getAudioTracks()[0];
         
-        const videoTrack = localStream.getVideoTracks()[0];
-        const tracks = [];
-        if (videoTrack) tracks.push(videoTrack);
-        tracks.push(newAudioTrack);
-        
-        const combinedStream = new MediaStream(tracks);
-        setLocalMediaStream(combinedStream);
+        if (localStream) {
+          const oldAudioTrack = localStream.getAudioTracks()[0];
+          if (oldAudioTrack) oldAudioTrack.stop();
+          
+          const videoTrack = localStream.getVideoTracks()[0];
+          const tracks = [];
+          if (videoTrack) tracks.push(videoTrack);
+          tracks.push(newAudioTrack);
+          
+          const combinedStream = new MediaStream(tracks);
+          setLocalMediaStream(combinedStream);
+        }
+      } catch (err) {
+        console.error("Failed to change audio device", err);
       }
-    } catch (err) {
-      console.error("Failed to change audio device", err);
     }
   };
 
-  const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = isMuted; // if it was muted, enable it
-      });
-      setIsMuted(!isMuted);
+  const toggleMute = async () => {
+    if (!isMuted) {
+      // Turn OFF physical hardware completely
+      if (localStream) {
+        localStream.getAudioTracks().forEach(track => {
+          track.stop(); // Kills the physical microphone stream
+          localStream.removeTrack(track);
+        });
+        
+        const audioSender = getSender('audio');
+        if (audioSender) {
+          audioSender.replaceTrack(null).catch(e => console.warn(e));
+        }
+        
+        setCameraStream(new MediaStream(localStream.getTracks()));
+      }
+      setIsMuted(true);
+    } else {
+      // Turn ON physical hardware
+      try {
+        setCameraError(null);
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Media API requires HTTPS or Localhost");
+        }
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true
+        });
+        const newAudioTrack = newStream.getAudioTracks()[0];
+        
+        if (localStream) {
+          const tracks = localStream.getTracks();
+          const oldAudio = tracks.find(t => t.kind === 'audio');
+          if (oldAudio) {
+            oldAudio.stop();
+            tracks.splice(tracks.indexOf(oldAudio), 1);
+          }
+          tracks.push(newAudioTrack);
+          setCameraStream(new MediaStream(tracks));
+        } else {
+          setCameraStream(newStream);
+        }
+        setIsMuted(false);
+        
+        // Refresh device labels now that we definitely have active permissions
+        getDevices();
+      } catch (err) {
+        console.error("Failed to turn on microphone hardware", err);
+        setCameraError(err.name === 'NotAllowedError' ? 'Microphone Permission Denied' : err.message);
+      }
     }
   };
 
-  const toggleCamera = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => {
-        track.enabled = isCameraOff;
-      });
-      setIsCameraOff(!isCameraOff);
+  const toggleCamera = async () => {
+    if (!isCameraOff) {
+      // Turn OFF physical hardware completely
+      if (localStream) {
+        const tracks = localStream.getTracks();
+        const oldVideo = tracks.find(t => t.kind === 'video');
+        if (oldVideo) {
+          oldVideo.stop();
+          tracks.splice(tracks.indexOf(oldVideo), 1);
+        }
+        
+        // Add dummy track to keep the WebRTC pipeline alive (replaceTrack(null) breaks Safari/Chrome)
+        const dummyVideo = createEmptyVideoTrack({ width: 640, height: 480 });
+        if (dummyVideo) tracks.push(dummyVideo);
+        
+        setCameraStream(new MediaStream(tracks));
+        
+        setIsCameraOff(true);
+        sendControlMessage({ type: 'camera-toggle', isCameraOff: true });
+      }
+    } else {
+      // Turn ON physical hardware
+      try {
+        setCameraError(null);
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Media API requires HTTPS or Localhost");
+        }
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+        });
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        
+        if (localStream) {
+          const tracks = localStream.getTracks();
+          const oldVideo = tracks.find(t => t.kind === 'video');
+          if (oldVideo) {
+            oldVideo.stop();
+            tracks.splice(tracks.indexOf(oldVideo), 1);
+          }
+          tracks.push(newVideoTrack);
+          setCameraStream(new MediaStream(tracks));
+        } else {
+          setCameraStream(newStream);
+        }
+        setIsCameraOff(false);
+        sendControlMessage({ type: 'camera-toggle', isCameraOff: false });
+      } catch (err) {
+        console.error("Failed to turn on camera hardware", err);
+        setCameraError(err.name === 'NotAllowedError' ? 'Camera Permission Denied' : err.message);
+      }
     }
   };
 
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
-      // Stop screen share, revert to camera
-      await startCamera();
+      // Stop screen share
+      if (localScreenStream) {
+        localScreenStream.getTracks().forEach(t => t.stop());
+      }
+      setScreenStream(null);
+      setIsScreenSharing(false);
+      sendControlMessage({ type: 'screen-toggle', isScreenSharing: false });
       
-      // Reset bitrate to default if needed (browser default)
-      const sender = getSender('video');
-      if (sender) {
-        const params = sender.getParameters();
-        if (params.encodings && params.encodings.length > 0) {
-          delete params.encodings[0].maxBitrate;
-          await sender.setParameters(params).catch(e => console.warn(e));
-        }
+      // Restore original mic track if mixed
+      if (localStream) {
+         const originalMic = localStream.getAudioTracks()[0];
+         const audioSender = getSender('audio');
+         if (audioSender && originalMic) audioSender.replaceTrack(originalMic);
       }
       return;
     }
 
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        throw new Error("Screen sharing requires HTTPS or Localhost");
+      }
+      
       const preset = QUALITY_PRESETS[quality];
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
@@ -145,20 +292,27 @@ export const ControlPanel = () => {
           height: preset.height,
           frameRate: preset.frameRate,
         },
-        audio: true // capture system audio if possible
+        audio: {
+          systemAudio: 'include'
+        }
       });
 
-      // Apply content hint for fidelity
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.contentHint = contentType;
         
         videoTrack.onended = () => {
-          startCamera();
+          setIsScreenSharing(false);
+          sendControlMessage({ type: 'screen-toggle', isScreenSharing: false });
+          setScreenStream(null);
+          if (localStream) {
+             const originalMic = localStream.getAudioTracks()[0];
+             const audioSender = getSender('audio');
+             if (audioSender && originalMic) audioSender.replaceTrack(originalMic);
+          }
         };
       }
 
-      // Mix Microphone and Screen Audio using Web Audio API
       let finalAudioTrack = null;
       const screenAudioTrack = stream.getAudioTracks()[0];
       const micTrack = localStream ? localStream.getAudioTracks()[0] : null;
@@ -176,28 +330,24 @@ export const ControlPanel = () => {
         finalAudioTrack = dest.stream.getAudioTracks()[0];
       } else if (screenAudioTrack) {
         finalAudioTrack = screenAudioTrack;
-      } else if (micTrack) {
-        finalAudioTrack = micTrack;
       }
 
-      let combinedTracks = [videoTrack];
-      if (finalAudioTrack) combinedTracks.push(finalAudioTrack);
+      if (finalAudioTrack) {
+         const audioSender = getSender('audio');
+         if (audioSender) audioSender.replaceTrack(finalAudioTrack);
+      }
 
-      const combinedStream = new MediaStream(combinedTracks);
-      setLocalMediaStream(combinedStream);
+      setScreenStream(new MediaStream([videoTrack]));
       setIsScreenSharing(true);
+      sendControlMessage({ type: 'screen-toggle', isScreenSharing: true });
       setShowSettings(false);
 
-      // Force WebRTC Max Bitrate Override
-      const sender = getSender('video');
+      const sender = getSender('video', true); // get screen sender
       if (sender) {
         const params = sender.getParameters();
-        if (!params.encodings) {
-          params.encodings = [{}];
-        }
-        params.encodings[0].maxBitrate = preset.bitrate;
+        if (!params.encodings) params.encodings = [{}];
+        params.encodings[0].maxBitrate = preset.bitrate || 2500000;
         await sender.setParameters(params);
-        console.log(`Applied maxBitrate: ${preset.bitrate} bps`);
       }
       
     } catch (err) {
@@ -211,7 +361,7 @@ export const ControlPanel = () => {
   };
 
   return (
-    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-end gap-4 z-20">
+    <div className={`absolute bottom-10 left-1/2 -translate-x-1/2 flex items-end gap-4 z-20 transition-all duration-500 hover:!opacity-100 hover:!translate-y-0 ${isIdle ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}>
       
       {/* Settings Menu Popup */}
       {showSettings && (

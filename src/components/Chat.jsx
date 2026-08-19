@@ -2,18 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useWebRTC } from '../context/WebRTCContext';
 import { Send, MessageSquare, X } from 'lucide-react';
 
-export const Chat = () => {
-  const { chatMessages, sendMessage } = useWebRTC();
+export const Chat = ({ isIdle }) => {
+  const { chatMessages, sendMessage, isChatOpen, setIsChatOpen, unreadCount } = useWebRTC();
   const [text, setText] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
   const endOfMessagesRef = useRef(null);
-  const unreadCount = chatMessages.length; // Basic unread logic can be improved
 
   useEffect(() => {
     if (endOfMessagesRef.current) {
       endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [chatMessages, isOpen]);
+  }, [chatMessages, isChatOpen]);
 
   const handleSend = (e) => {
     e.preventDefault();
@@ -27,20 +25,20 @@ export const Chat = () => {
     <>
       {/* Floating Chat Button */}
       <button 
-        onClick={() => setIsOpen(true)}
-        className={`absolute bottom-8 right-8 bg-blue-600/90 backdrop-blur-md hover:bg-blue-500 text-white p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.2)] z-30 transition-all duration-500 flex items-center justify-center border border-blue-400/20 group hover:scale-105 hover:-translate-y-1 ${isOpen ? 'opacity-0 pointer-events-none scale-90 translate-y-4' : 'opacity-100 scale-100 translate-y-0'}`}
+        onClick={() => setIsChatOpen(true)}
+        className={`absolute bottom-8 right-8 bg-blue-600/90 backdrop-blur-md hover:!bg-blue-500 hover:!opacity-100 hover:!scale-105 hover:!-translate-y-1 text-white p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.2)] z-30 transition-all duration-500 flex items-center justify-center border border-blue-400/20 group ${isChatOpen ? 'opacity-0 pointer-events-none scale-90 translate-y-4' : (isIdle ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 scale-100 translate-y-0')}`}
       >
         <MessageSquare size={24} className="group-hover:animate-bounce" />
-        {chatMessages.length > 0 && (
+        {unreadCount > 0 && (
           <span className="absolute -top-2 -right-2 bg-red-500 text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center border-2 border-gray-900 shadow-lg shadow-red-500/50 animate-pulse">
-            {chatMessages.length}
+            {unreadCount}
           </span>
         )}
       </button>
 
       {/* Chat Panel */}
       <div 
-        className={`absolute top-6 right-6 w-[340px] h-[calc(100vh-140px)] max-h-[700px] bg-gray-900/60 backdrop-blur-2xl rounded-3xl border border-gray-700/50 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.6)] z-40 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0 pointer-events-none'}`}
+        className={`absolute top-6 right-6 w-[340px] h-[calc(100vh-140px)] max-h-[700px] bg-gray-900/60 backdrop-blur-2xl rounded-3xl border border-gray-700/50 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.6)] z-40 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] origin-top-right ${isChatOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'}`}
       >
         <div className="bg-gray-800/40 p-5 border-b border-gray-700/50 flex justify-between items-center backdrop-blur-md">
           <h3 className="font-semibold text-gray-200 flex items-center gap-3 tracking-wide">
@@ -50,7 +48,7 @@ export const Chat = () => {
             Peer Chat
           </h3>
           <button 
-            onClick={() => setIsOpen(false)}
+            onClick={() => setIsChatOpen(false)}
             className="text-gray-400 hover:text-white hover:bg-gray-700/50 p-2 rounded-full transition-colors"
           >
             <X size={20} />

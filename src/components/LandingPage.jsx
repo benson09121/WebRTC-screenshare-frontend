@@ -12,10 +12,8 @@ export const LandingPage = () => {
     const roomFromUrl = params.get('room');
     if (roomFromUrl && wsStatus === 'connected' && !roomId) {
       joinRoom(roomFromUrl);
-      // Wait for components to mount before initiating the WebRTC offer
-      setTimeout(() => startCall(), 500);
     }
-  }, [wsStatus, roomId, joinRoom, startCall]);
+  }, [wsStatus, roomId, joinRoom]);
 
   const handleCreateRoom = () => {
     // Generate a 5-character alphanumeric room code
@@ -36,8 +34,6 @@ export const LandingPage = () => {
     if (roomInput.trim().length > 0) {
       const code = roomInput.trim().toUpperCase();
       joinRoom(code);
-      // Joiner initiates the call
-      setTimeout(() => startCall(), 500);
       
       const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + code;
       window.history.pushState({ path: newUrl }, '', newUrl);
