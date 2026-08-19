@@ -11,7 +11,7 @@ export const VideoPlayer = ({ isIdle }) => {
   const containerRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hideRemote, setHideRemote] = useState(false);
-  
+
   const [mainView, setMainView] = useState('remote-screen');
   const [isMirrored, setIsMirrored] = useState(true);
   const [prevHasScreen, setPrevHasScreen] = useState(false);
@@ -28,14 +28,14 @@ export const VideoPlayer = ({ isIdle }) => {
 
   const hasRemoteScreen = remoteScreenSharing;
   const hasLocalScreen = isScreenSharing;
-  
+
   // Determine which stream goes where
   const actualMainView = (hasRemoteScreen || hasLocalScreen) && mainView === 'remote-screen' ? 'remote-screen' : 'remote-camera';
-  
-  const mainStream = actualMainView === 'remote-screen' 
-    ? (hasRemoteScreen ? remoteScreenStream : localScreenStream) 
+
+  const mainStream = actualMainView === 'remote-screen'
+    ? (hasRemoteScreen ? remoteScreenStream : localScreenStream)
     : remoteStream;
-    
+
   const secondaryStream = actualMainView === 'remote-screen' ? remoteStream : (hasRemoteScreen ? remoteScreenStream : localScreenStream);
 
   useEffect(() => {
@@ -78,13 +78,13 @@ export const VideoPlayer = ({ isIdle }) => {
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden group">
-      
+
       {/* Fullscreen Chat Toggle */}
       {isFullscreen && (
         <div className={`absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-black/80 to-transparent z-40 flex items-start justify-center pt-6 pointer-events-none transition-opacity duration-500 ${isIdle ? 'opacity-0' : 'opacity-100'}`}>
-          <button 
+          <button
             onClick={() => setIsChatOpen(!isChatOpen)}
-            className="pointer-events-auto flex items-center gap-2 bg-blue-600/80 hover:bg-blue-500 backdrop-blur-md px-5 py-2.5 rounded-full text-white text-sm font-medium border border-blue-400/30 shadow-lg transition-transform hover:scale-105"
+            className="pointer-events-auto flex items-center gap-2 bg-blue-600/8 0 hover:bg-blue-500 backdrop-blur-md px-5 py-2.5 rounded-full text-white text-sm font-medium border border-blue-400/30 shadow-lg transition-transform hover:scale-105"
           >
             <MessageSquare size={16} />
             <span>Chat {unreadCount > 0 ? `(${unreadCount})` : ''}</span>
@@ -109,7 +109,7 @@ export const VideoPlayer = ({ isIdle }) => {
             />
           )}
           {(!remoteCameraOff || actualMainView === 'remote-screen') && (
-            <button 
+            <button
               onClick={() => setHideRemote(!hideRemote)}
               className={`absolute top-8 right-24 p-3 bg-gray-900/60 backdrop-blur-md hover:bg-gray-800 text-white rounded-full transition-all duration-300 z-20 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-700/50 ${isIdle && isFullscreen ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}
               title={hideRemote ? "Show Remote Video" : "Hide Remote Video"}
@@ -117,9 +117,9 @@ export const VideoPlayer = ({ isIdle }) => {
               {hideRemote ? <Eye size={20} /> : <EyeOff size={20} />}
             </button>
           )}
-          
+
           {(hasRemoteScreen || hasLocalScreen) && (
-            <button 
+            <button
               onClick={toggleFullscreen}
               className={`absolute top-8 right-8 p-3 bg-gray-900/60 backdrop-blur-md hover:bg-gray-800 text-white rounded-full transition-all duration-300 z-20 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-700/50 ${isIdle && isFullscreen ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}
               title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
@@ -155,7 +155,7 @@ export const VideoPlayer = ({ isIdle }) => {
 
       {/* Remote PIP (Secondary Video) */}
       {((hasRemoteScreen || hasLocalScreen) && secondaryStream && !remoteCameraOff) && (
-        <motion.div 
+        <motion.div
           drag
           dragConstraints={containerRef}
           dragElastic={0.1}
@@ -173,14 +173,14 @@ export const VideoPlayer = ({ isIdle }) => {
             style={{ transform: actualMainView === 'remote-screen' && remoteMirrored ? 'scaleX(-1)' : 'scaleX(1)' }}
           />
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/remotepip:opacity-100 flex flex-col items-center justify-center transition-all duration-300 pointer-events-none">
-             <span className="text-white font-medium bg-gray-900/80 px-3 py-1 rounded-full text-xs shadow-lg backdrop-blur-sm border border-gray-700">Click to Swap</span>
+            <span className="text-white font-medium bg-gray-900/80 px-3 py-1 rounded-full text-xs shadow-lg backdrop-blur-sm border border-gray-700">Click to Swap</span>
           </div>
         </motion.div>
       )}
 
       {/* Local (PiP) Video */}
       {(!hideLocal && localStream && !isCameraOff) && (
-        <motion.div 
+        <motion.div
           drag
           dragConstraints={containerRef}
           dragElastic={0.1}
@@ -196,7 +196,7 @@ export const VideoPlayer = ({ isIdle }) => {
             className={`w-full h-full object-cover pointer-events-none transition-transform duration-300`}
             style={{ transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)' }}
           />
-          
+
           {/* Mirror Button */}
           <button
             onClick={(e) => {

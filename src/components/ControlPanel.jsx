@@ -3,6 +3,7 @@ import { useWebRTC } from '../context/WebRTCContext';
 import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Settings } from 'lucide-react';
 
 const QUALITY_PRESETS = {
+  'lossless': { label: 'Lossless (Native Resolution)', lossless: true },
   '1080p': { label: '1080p (60fps)', width: 1920, height: 1080, frameRate: 60 },
   '720p':  { label: '720p (30fps)',  width: 1280, height: 720,  frameRate: 30 },
   '480p':  { label: '480p (30fps)',  width: 854,  height: 480,  frameRate: 30 }
@@ -41,7 +42,7 @@ export const ControlPanel = ({ isIdle }) => {
   const { startCall, endCall, setCameraStream, setScreenStream, localStream, localScreenStream, getSender, connected, isScreenSharing, setIsScreenSharing, isCameraOff, setIsCameraOff, isMuted, setIsMuted, sendControlMessage } = useWebRTC();
   
   const [showSettings, setShowSettings] = useState(false);
-  const [quality, setQuality] = useState('1080p');
+  const [quality, setQuality] = useState('lossless');
   const [contentType, setContentType] = useState('motion'); // 'motion' (Movie) or 'detail' (Text)
   const [isConnecting, setIsConnecting] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -286,12 +287,17 @@ export const ControlPanel = ({ isIdle }) => {
       }
       
       const preset = QUALITY_PRESETS[quality];
+      
+      const videoConstraints = preset.lossless 
+        ? true 
+        : {
+            width: preset.width,
+            height: preset.height,
+            frameRate: preset.frameRate,
+          };
+
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          width: preset.width,
-          height: preset.height,
-          frameRate: preset.frameRate,
-        },
+        video: videoConstraints,
         audio: {
           systemAudio: 'include'
         }
