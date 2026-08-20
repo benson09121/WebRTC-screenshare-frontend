@@ -1,106 +1,323 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useWebRTC } from '../context/WebRTCContext';
-import { Send, MessageSquare, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Bell,
+  BellOff,
+  ChevronDown,
+  MessageSquare,
+  Send,
+  X,
+} from 'lucide-react';
+import { useWebRTC } from '../context/useWebRTC';
+import { Button } from './ui/button';
+import { Textarea } from './ui/textarea';
+
+const timeFormatter = new Intl.DateTimeFormat([], {
+  hour: 'numeric',
+  minute: '2-digit',
+});
 
 export const Chat = ({ isIdle }) => {
-  const { chatMessages, sendMessage, isChatOpen, setIsChatOpen, unreadCount } = useWebRTC();
+  const {
+    chatMessages,
+    connected,
+    isChatOpen,
+    isFullscreen,
+    notificationSoundEnabled,
+    sendMessage,
+    setIsChatOpen,
+    setNotificationSoundEnabled,
+    unreadCount,
+  } = useWebRTC();
+
   const [text, setText] = useState('');
-  const endOfMessagesRef = useRef(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [showNotification, setShowNotification] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const messagesRef = useRef(null);
+  const composerRef = useRef(null);
+  const launcherRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const previousMessageCountRef = useRef(chatMessages.length);
+  const wasChatOpenRef = useRef(false);
+  const notificationTimerRef = useRef(null);
+
+  const scrollToLatest = useCallback((behavior = 'smooth') => {
+    const messageList = messagesRef.current;
+    if (!messageList) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    messageList.scrollTo({
+      top: messageList.scrollHeight,
+      behavior: reduceMotion ? 'auto' : behavior,
+    });
+    isNearBottomRef.current = true;
+    setShowJumpToLatest(false);
+  }, []);
 
   useEffect(() => {
-    if (endOfMessagesRef.current) {
-      endOfMessagesRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages, isChatOpen]);
+    const hadNewMessage = chatMessages.length > previousMessageCountRef.current;
+    const latestMessage = chatMessages.at(-1);
+    previousMessageCountRef.current = chatMessages.length;
 
-  const handleSend = (e) => {
-    e.preventDefault();
-    if (text.trim()) {
-      sendMessage(text.trim());
-      setText('');
+    if (!hadNewMessage || !latestMessage) return;
+
+    if (latestMessage.from === 'remote') {
+      setAnnouncement(`New message from the participant. ${chatMessages.length} messages in chat.`);
+    }
+
+    if (!isChatOpen && latestMessage.from === 'remote') {
+      setShowNotification(true);
+      window.clearTimeout(notificationTimerRef.current);
+      notificationTimerRef.current = window.setTimeout(() => {
+        setShowNotification(false);
+      }, 4500);
+      return;
+    }
+
+    if (isNearBottomRef.current || latestMessage.from === 'local') {
+      window.requestAnimationFrame(() => scrollToLatest('smooth'));
+    } else {
+      setShowJumpToLatest(true);
+    }
+  }, [chatMessages, isChatOpen, scrollToLatest]);
+
+  useEffect(() => {
+    if (isChatOpen) {
+      setShowNotification(false);
+      window.clearTimeout(notificationTimerRef.current);
+      window.requestAnimationFrame(() => {
+        scrollToLatest('auto');
+        if (window.matchMedia('(min-width: 768px)').matches) composerRef.current?.focus();
+      });
+    } else if (wasChatOpenRef.current) {
+      window.requestAnimationFrame(() => launcherRef.current?.focus());
+    }
+    wasChatOpenRef.current = isChatOpen;
+  }, [isChatOpen, scrollToLatest]);
+
+  useEffect(() => {
+    if (!isChatOpen) return;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsChatOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isChatOpen, setIsChatOpen]);
+
+  useEffect(() => () => window.clearTimeout(notificationTimerRef.current), []);
+
+  const handleSend = (event) => {
+    event?.preventDefault();
+    const message = text.trim();
+    if (!message) return;
+    if (sendMessage(message)) setText('');
+  };
+
+  const handleComposerKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      handleSend(event);
     }
   };
 
+  const handleMessageScroll = (event) => {
+    const messageList = event.currentTarget;
+    const nearBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 72;
+    isNearBottomRef.current = nearBottom;
+    if (nearBottom) setShowJumpToLatest(false);
+  };
+
+  const panelPlacement = isFullscreen
+    ? 'inset-x-3 bottom-3 h-[min(58dvh,34rem)] md:inset-y-3 md:left-auto md:right-3 md:h-auto md:w-[min(22rem,32vw)]'
+    : 'inset-x-3 bottom-20 h-[min(66dvh,32rem)] sm:left-auto sm:right-5 sm:w-[22rem]';
+
+  const launcherHidden = isChatOpen || (isIdle && unreadCount === 0);
+
   return (
     <>
-      {/* Floating Chat Button */}
-      <button 
+      <Button
+        ref={launcherRef}
+        variant="secondary"
         onClick={() => setIsChatOpen(true)}
-        className={`absolute bottom-8 right-8 bg-blue-600/90 backdrop-blur-md hover:!bg-blue-500 hover:!opacity-100 hover:!scale-105 hover:!-translate-y-1 text-white p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.2)] z-30 transition-all duration-500 flex items-center justify-center border border-blue-400/20 group ${isChatOpen ? 'opacity-0 pointer-events-none scale-90 translate-y-4' : (isIdle ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 scale-100 translate-y-0')}`}
+        className={`fixed bottom-5 right-5 z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
+        aria-label={unreadCount > 0 ? `Open chat, ${unreadCount} unread messages` : 'Open chat'}
+        aria-hidden={launcherHidden}
+        tabIndex={launcherHidden ? -1 : undefined}
       >
-        <MessageSquare size={24} className="group-hover:animate-bounce" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-2 -right-2 bg-red-500 text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center border-2 border-gray-900 shadow-lg shadow-red-500/50 animate-pulse">
-            {unreadCount}
+        <MessageSquare className="size-4 text-teal-300" />
+        <span className="hidden sm:inline">Chat</span>
+        {unreadCount > 0 ? (
+          <span className="grid min-w-5 place-items-center rounded-full bg-teal-300 px-1.5 py-0.5 text-[10px] font-bold leading-4 text-[#07100f]">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
-        )}
-      </button>
+        ) : null}
+      </Button>
 
-      {/* Chat Panel */}
-      <div 
-        className={`absolute top-6 right-6 w-[340px] h-[calc(100vh-140px)] max-h-[700px] bg-gray-900/60 backdrop-blur-2xl rounded-3xl border border-gray-700/50 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.6)] z-40 flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] origin-top-right ${isChatOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'}`}
+      {showNotification && !isChatOpen ? (
+        <div
+          className="fixed bottom-[4.75rem] right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:right-5"
+          role="status"
+          aria-live="polite"
+        >
+          <button
+            type="button"
+            onClick={() => setIsChatOpen(true)}
+            className="flex min-h-10 items-center gap-3 rounded-lg px-2.5 text-left outline-none hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-teal-300"
+          >
+            <span className="grid size-8 place-items-center rounded-lg bg-teal-300/10 text-teal-300">
+              <MessageSquare className="size-4" />
+            </span>
+            <span>
+              <span className="block text-xs font-medium text-zinc-100">New message</span>
+              <span className="block text-[11px] text-zinc-500">Open room chat</span>
+            </span>
+          </button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-10"
+            onClick={() => setShowNotification(false)}
+            aria-label="Dismiss message notification"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ) : null}
+
+      <aside
+        className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111719]/97 shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${panelPlacement} ${isChatOpen ? 'translate-y-0 scale-100 opacity-100' : 'pointer-events-none translate-y-2 scale-[0.98] opacity-0'}`}
+        role="dialog"
+        aria-labelledby="room-chat-title"
+        aria-describedby="room-chat-description"
+        aria-hidden={!isChatOpen}
+        inert={!isChatOpen ? '' : undefined}
       >
-        <div className="bg-gray-800/40 p-5 border-b border-gray-700/50 flex justify-between items-center backdrop-blur-md">
-          <h3 className="font-semibold text-gray-200 flex items-center gap-3 tracking-wide">
-            <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400">
-              <MessageSquare size={16} />
-            </div>
-            Peer Chat
-          </h3>
-          <button 
-            onClick={() => setIsChatOpen(false)}
-            className="text-gray-400 hover:text-white hover:bg-gray-700/50 p-2 rounded-full transition-colors"
+        <header className="flex min-h-[4.5rem] items-center justify-between gap-3 border-b border-white/[0.08] px-4">
+          <div className="min-w-0">
+            <h2 id="room-chat-title" className="truncate text-sm font-semibold text-zinc-100">
+              Room chat
+            </h2>
+            <p id="room-chat-description" className="mt-0.5 text-[11px] text-zinc-500">
+              Peer-to-peer · not saved
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-10"
+              onClick={() => setNotificationSoundEnabled(value => !value)}
+              aria-label={notificationSoundEnabled ? 'Mute chat notification sounds' : 'Enable chat notification sounds'}
+              title={notificationSoundEnabled ? 'Mute notification sounds' : 'Enable notification sounds'}
+            >
+              {notificationSoundEnabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-10"
+              onClick={() => setIsChatOpen(false)}
+              aria-label="Close chat"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </header>
+
+        <div className="relative min-h-0 flex-1">
+          <ol
+            ref={messagesRef}
+            onScroll={handleMessageScroll}
+            className="custom-scrollbar h-full space-y-3 overflow-y-auto px-4 py-4"
+            aria-label="Chat messages"
           >
-            <X size={20} />
-          </button>
+            {chatMessages.length === 0 ? (
+              <li className="flex h-full min-h-44 flex-col items-center justify-center px-4 text-center">
+                <span className="mb-3 grid size-11 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-zinc-600">
+                  <MessageSquare className="size-5" />
+                </span>
+                <p className="text-sm font-medium text-zinc-400">No messages yet</p>
+                <p className="mt-1 max-w-[28ch] text-xs leading-5 text-zinc-600">
+                  Messages travel directly between participants and disappear when the room closes.
+                </p>
+              </li>
+            ) : (
+              chatMessages.map((message) => {
+                const isLocal = message.from === 'local';
+                return (
+                  <li
+                    key={message.id}
+                    className={`flex ${isLocal ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[86%] ${isLocal ? 'text-right' : 'text-left'}`}>
+                      <div
+                        className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-left text-sm leading-5 ${isLocal ? 'rounded-br-md bg-teal-300 text-[#07100f]' : 'rounded-bl-md border border-white/[0.08] bg-white/[0.065] text-zinc-200'}`}
+                      >
+                        {message.text}
+                      </div>
+                      {message.sentAt ? (
+                        <time
+                          dateTime={new Date(message.sentAt).toISOString()}
+                          className="mt-1 block px-1 text-[10px] text-zinc-600"
+                        >
+                          {isLocal ? 'You · ' : 'Participant · '}
+                          {timeFormatter.format(message.sentAt)}
+                        </time>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })
+            )}
+          </ol>
+
+          {showJumpToLatest ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg"
+              onClick={() => scrollToLatest('smooth')}
+            >
+              <ChevronDown className="size-3.5" />
+              New messages
+            </Button>
+          ) : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar bg-gradient-to-b from-transparent to-gray-900/40">
-          {chatMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-gray-500 text-sm text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center border border-gray-700/50">
-                <MessageSquare size={24} className="text-gray-600" />
-              </div>
-              <p>No messages yet.<br/>Direct P2P connection secured.</p>
-            </div>
-          ) : (
-            chatMessages.map((msg, i) => (
-              <div 
-                key={i} 
-                className={`flex ${msg.from === 'local' ? 'justify-end' : 'justify-start'} animate-[fadeIn_0.3s_ease-out]`}
-              >
-                <div 
-                  className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm ${
-                    msg.from === 'local' 
-                      ? 'bg-blue-600/90 text-white rounded-tr-sm border border-blue-500/50' 
-                      : 'bg-gray-800/80 text-gray-200 rounded-tl-sm border border-gray-700/50'
-                  }`}
-                >
-                  {msg.text}
-                </div>
-              </div>
-            ))
-          )}
-          <div ref={endOfMessagesRef} />
-        </div>
-
-        <form onSubmit={handleSend} className="p-4 bg-gray-900/80 border-t border-gray-700/50 flex gap-3 backdrop-blur-md">
-          <input 
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 bg-gray-800/50 border border-gray-700/50 rounded-full px-5 py-3 text-sm text-gray-200 focus:outline-none focus:border-blue-500/50 focus:bg-gray-800 transition-all placeholder:text-gray-500 shadow-inner"
-          />
-          <button 
-            type="submit"
-            disabled={!text.trim()}
-            className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:border disabled:border-gray-700/50 text-white p-3 rounded-full transition-all flex items-center justify-center shadow-[0_0_15px_rgba(37,99,235,0.3)] disabled:shadow-none"
-          >
-            <Send size={18} className={text.trim() ? 'translate-x-0.5' : ''} />
-          </button>
+        <form onSubmit={handleSend} className="border-t border-white/[0.08] bg-[#0d1214] p-3">
+          <label htmlFor="chat-message" className="sr-only">Message</label>
+          <div className="flex items-end gap-2">
+            <Textarea
+              ref={composerRef}
+              id="chat-message"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder={connected ? 'Message participant…' : 'Chat becomes available when connected'}
+              maxLength={2000}
+              rows={1}
+              disabled={!connected}
+              className="max-h-28 min-h-11 resize-none"
+              aria-describedby="chat-composer-help"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="size-11"
+              disabled={!connected || !text.trim()}
+              aria-label="Send message"
+            >
+              <Send className="size-4" />
+            </Button>
+          </div>
+          <div id="chat-composer-help" className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-zinc-600">
+            <span>Enter to send · Shift+Enter for a new line</span>
+            {text.length >= 1800 ? <span>{text.length}/2000</span> : null}
+          </div>
         </form>
-      </div>
+      </aside>
+
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
     </>
   );
 };

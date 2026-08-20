@@ -1,38 +1,88 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-export const useSignaling = (url) => {
-  const queryClient = useQueryClient();
-  const wsRef = useRef(null);
-  
-  // The query itself just returns the current status from the queryClient
-  const { data: status } = useQuery({
-    queryKey: ['ws-status'],
-    queryFn: () => 'disconnected',
-    initialData: 'disconnected',
-    staleTime: Infinity, // never stale, we manage it manually
-  });
+const BASE_RECONNECT_DELAY_MS = 500;
+const MAX_RECONNECT_DELAY_MS = 10000;
+
+export const useSignaling = url => {
+  const [status, setStatus] = useState('connecting');
+  const [ws, setWs] = useState(null);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const attemptRef = useRef(0);
 
   useEffect(() => {
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    let active = true;
+    let reconnectTimer = null;
+    let currentSocket = null;
 
-    ws.onopen = () => {
-      queryClient.setQueryData(['ws-status'], 'connected');
+    const scheduleReconnect = () => {
+      if (!active || reconnectTimer) return;
+
+      const delay = Math.min(
+        MAX_RECONNECT_DELAY_MS,
+        BASE_RECONNECT_DELAY_MS * (2 ** attemptRef.current),
+      );
+      attemptRef.current += 1;
+      setReconnectAttempt(attemptRef.current);
+      setStatus('reconnecting');
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
     };
 
-    ws.onclose = () => {
-      queryClient.setQueryData(['ws-status'], 'disconnected');
+    const connect = () => {
+      if (!active) return;
+
+      setStatus(attemptRef.current > 0 ? 'reconnecting' : 'connecting');
+      const socket = new WebSocket(url);
+      currentSocket = socket;
+
+      socket.onopen = () => {
+        if (!active || currentSocket !== socket) return;
+        attemptRef.current = 0;
+        setReconnectAttempt(0);
+        setWs(socket);
+        setStatus('connected');
+      };
+
+      socket.onerror = () => {
+        if (!active || currentSocket !== socket) return;
+        socket.close();
+      };
+
+      socket.onclose = () => {
+        if (!active || currentSocket !== socket) return;
+        setWs(current => current === socket ? null : current);
+        scheduleReconnect();
+      };
     };
 
-    ws.onerror = () => {
-      queryClient.setQueryData(['ws-status'], 'error');
+    const reconnectNow = () => {
+      if (
+        !active
+        || currentSocket?.readyState === WebSocket.OPEN
+        || currentSocket?.readyState === WebSocket.CONNECTING
+      ) return;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      connect();
     };
+
+    window.addEventListener('online', reconnectNow);
+    connect();
 
     return () => {
-      ws.close();
+      active = false;
+      window.removeEventListener('online', reconnectNow);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (currentSocket) {
+        currentSocket.onopen = null;
+        currentSocket.onclose = null;
+        currentSocket.onerror = null;
+        currentSocket.close();
+      }
     };
-  }, [url, queryClient]);
+  }, [url]);
 
-  return { status, ws: wsRef.current };
+  return { status, ws, reconnectAttempt };
 };

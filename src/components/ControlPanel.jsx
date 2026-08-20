@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useWebRTC } from '../context/WebRTCContext';
-import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useWebRTC } from '../context/useWebRTC';
+import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff, Settings } from 'lucide-react';
+import { Button } from './ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { createEmptyVideoTrack } from '../lib/mediaTracks';
 
 const QUALITY_PRESETS = {
-  'lossless': { label: 'Lossless (Native Resolution)', lossless: true },
-  '1080p': { label: '1080p (60fps)', width: 1920, height: 1080, frameRate: 60 },
-  '720p':  { label: '720p (30fps)',  width: 1280, height: 720,  frameRate: 30 },
-  '480p':  { label: '480p (30fps)',  width: 854,  height: 480,  frameRate: 30 }
+  'lossless': { label: 'Native resolution (up to 60fps)', lossless: true, frameRate: 60, bitrate: 12000000 },
+  '1080p': { label: '1080p (60fps)', width: 1920, height: 1080, frameRate: 60, bitrate: 10000000 },
+  '720p':  { label: '720p (60fps)',  width: 1280, height: 720,  frameRate: 60, bitrate: 6000000 },
+  '480p':  { label: '480p (30fps)',  width: 854,  height: 480,  frameRate: 30, bitrate: 2500000 }
 };
 
 const createEmptyAudioTrack = () => {
@@ -18,48 +21,22 @@ const createEmptyAudioTrack = () => {
     const track = dst.stream.getAudioTracks()[0];
     track.enabled = false;
     return track;
-  } catch (e) {
-    return null;
-  }
-};
-
-const createEmptyVideoTrack = ({ width, height }) => {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    canvas.getContext('2d').fillRect(0, 0, width, height);
-    const stream = canvas.captureStream();
-    const track = stream.getVideoTracks()[0];
-    track.enabled = false;
-    return track;
-  } catch (e) {
+  } catch {
     return null;
   }
 };
 
 export const ControlPanel = ({ isIdle }) => {
-  const { startCall, endCall, setCameraStream, setScreenStream, localStream, localScreenStream, getSender, connected, isScreenSharing, setIsScreenSharing, isCameraOff, setIsCameraOff, isMuted, setIsMuted, sendControlMessage } = useWebRTC();
+  const { endCall, setCameraStream, setScreenStream, localStream, localScreenStream, getSender, isScreenSharing, setIsScreenSharing, isCameraOff, setIsCameraOff, isMuted, setIsMuted, sendControlMessage } = useWebRTC();
   
   const [showSettings, setShowSettings] = useState(false);
-  const [quality, setQuality] = useState('lossless');
+  const [quality, setQuality] = useState('720p');
   const [contentType, setContentType] = useState('motion'); // 'motion' (Movie) or 'detail' (Text)
-  const [isConnecting, setIsConnecting] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
-
-  // Initialize camera by default
-  useEffect(() => {
-    startCamera();
-  }, []);
-
-  useEffect(() => {
-    if (connected) {
-      setIsConnecting(false);
-    }
-  }, [connected]);
+  const startCameraRef = useRef(null);
 
   const startCamera = async () => {
     try {
@@ -105,6 +82,11 @@ export const ControlPanel = ({ isIdle }) => {
       setCameraError(err.name === 'NotAllowedError' ? 'Permission Denied' : err.message);
     }
   };
+  startCameraRef.current = startCamera;
+
+  useEffect(() => {
+    startCameraRef.current?.();
+  }, []);
 
   const getDevices = async () => {
     try {
@@ -149,7 +131,7 @@ export const ControlPanel = ({ isIdle }) => {
           tracks.push(newAudioTrack);
           
           const combinedStream = new MediaStream(tracks);
-          setLocalMediaStream(combinedStream);
+          setCameraStream(combinedStream);
         }
       } catch (err) {
         console.error("Failed to change audio device", err);
@@ -268,7 +250,7 @@ export const ControlPanel = ({ isIdle }) => {
       if (localScreenStream) {
         localScreenStream.getTracks().forEach(t => t.stop());
       }
-      setScreenStream(null);
+      await setScreenStream(null);
       setIsScreenSharing(false);
       sendControlMessage({ type: 'screen-toggle', isScreenSharing: false });
       
@@ -281,6 +263,9 @@ export const ControlPanel = ({ isIdle }) => {
       return;
     }
 
+    let capturedStream = null;
+    let shareStarted = false;
+
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         throw new Error("Screen sharing requires HTTPS or Localhost");
@@ -288,29 +273,29 @@ export const ControlPanel = ({ isIdle }) => {
       
       const preset = QUALITY_PRESETS[quality];
       
-      const videoConstraints = preset.lossless 
-        ? true 
+      const videoConstraints = preset.lossless
+        ? { frameRate: { ideal: preset.frameRate, max: preset.frameRate } }
         : {
-            width: preset.width,
-            height: preset.height,
-            frameRate: preset.frameRate,
+            width: { ideal: preset.width, max: preset.width },
+            height: { ideal: preset.height, max: preset.height },
+            frameRate: { ideal: preset.frameRate, max: preset.frameRate },
           };
 
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      capturedStream = await navigator.mediaDevices.getDisplayMedia({
         video: videoConstraints,
         audio: {
           systemAudio: 'include'
         }
       });
 
-      const videoTrack = stream.getVideoTracks()[0];
+      const videoTrack = capturedStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.contentHint = contentType;
         
         videoTrack.onended = () => {
           setIsScreenSharing(false);
           sendControlMessage({ type: 'screen-toggle', isScreenSharing: false });
-          setScreenStream(null);
+          setScreenStream(null).catch(err => console.warn('Failed to detach screen track', err));
           if (localStream) {
              const originalMic = localStream.getAudioTracks()[0];
              const audioSender = getSender('audio');
@@ -320,7 +305,7 @@ export const ControlPanel = ({ isIdle }) => {
       }
 
       let finalAudioTrack = null;
-      const screenAudioTrack = stream.getAudioTracks()[0];
+      const screenAudioTrack = capturedStream.getAudioTracks()[0];
       const micTrack = localStream ? localStream.getAudioTracks()[0] : null;
 
       if (screenAudioTrack && micTrack) {
@@ -343,21 +328,31 @@ export const ControlPanel = ({ isIdle }) => {
          if (audioSender) audioSender.replaceTrack(finalAudioTrack);
       }
 
-      setScreenStream(new MediaStream([videoTrack]));
+      await setScreenStream(new MediaStream([videoTrack]));
       setIsScreenSharing(true);
       sendControlMessage({ type: 'screen-toggle', isScreenSharing: true });
+      shareStarted = true;
       setShowSettings(false);
 
       const sender = getSender('video', true); // get screen sender
       if (sender) {
         const params = sender.getParameters();
-        if (!params.encodings) params.encodings = [{}];
-        params.encodings[0].maxBitrate = preset.bitrate || 2500000;
+        if (!params.encodings?.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = preset.bitrate;
+        params.encodings[0].maxFramerate = preset.frameRate;
+        params.degradationPreference = contentType === 'motion'
+          ? 'maintain-framerate'
+          : 'maintain-resolution';
         await sender.setParameters(params);
       }
       
     } catch (err) {
       console.error("Failed to share screen", err);
+      if (!shareStarted) {
+        capturedStream?.getTracks().forEach(track => track.stop());
+        setIsScreenSharing(false);
+        setCameraError(err.name === 'NotAllowedError' ? 'Screen sharing permission denied' : err.message);
+      }
     }
   };
 
@@ -367,17 +362,18 @@ export const ControlPanel = ({ isIdle }) => {
   };
 
   return (
-    <div className={`absolute bottom-10 left-1/2 -translate-x-1/2 flex items-end gap-4 z-20 transition-all duration-500 hover:!opacity-100 hover:!translate-y-0 ${isIdle ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'}`}>
+    <TooltipProvider delayDuration={250}>
+    <div className={`absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-end gap-4 transition-all duration-300 hover:!translate-y-0 hover:!opacity-100 sm:bottom-8 ${isIdle ? 'translate-y-6 opacity-0' : 'translate-y-0 opacity-100'}`}>
       
       {/* Settings Menu Popup */}
       {showSettings && (
-        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-2xl border border-gray-700/50 p-6 rounded-3xl shadow-[0_20px_60px_-12px_rgba(0,0,0,0.6)] flex flex-col gap-5 w-80 mb-2 transform transition-all">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-2">Device Settings</h3>
+        <aside className="absolute bottom-20 left-1/2 mb-2 flex w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-5 rounded-2xl border border-white/10 bg-[#111719]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl" aria-label="Call settings">
+          <h3 className="border-b border-white/[0.08] pb-2 text-xs font-semibold tracking-wide text-zinc-400">Device settings</h3>
           
           <div className="flex flex-col gap-2">
             <label className="text-sm text-gray-400 flex items-center gap-2"><Mic size={14}/> Microphone</label>
             <select 
-              className="bg-gray-800 text-white p-2 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 text-sm"
+              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
               value={selectedAudioDevice}
               onChange={handleAudioDeviceChange}
             >
@@ -390,12 +386,12 @@ export const ControlPanel = ({ isIdle }) => {
             </select>
           </div>
 
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-2 mt-2">Screen Share Settings</h3>
+          <h3 className="mt-1 border-b border-white/[0.08] pb-2 text-xs font-semibold tracking-wide text-zinc-400">Screen share</h3>
           
           <div className="flex flex-col gap-2">
             <label className="text-sm text-gray-400">Resolution & FPS</label>
             <select 
-              className="bg-gray-800 text-white p-2 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500"
+              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
               value={quality}
               onChange={(e) => setQuality(e.target.value)}
             >
@@ -408,7 +404,7 @@ export const ControlPanel = ({ isIdle }) => {
           <div className="flex flex-col gap-2">
             <label className="text-sm text-gray-400">Content Type</label>
             <select 
-              className="bg-gray-800 text-white p-2 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500"
+              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
               value={contentType}
               onChange={(e) => setContentType(e.target.value)}
             >
@@ -416,59 +412,64 @@ export const ControlPanel = ({ isIdle }) => {
               <option value="detail">Text/Coding (Detail)</option>
             </select>
           </div>
-        </div>
+        </aside>
       )}
 
       {/* Camera Error Banner */}
       {cameraError && (
-        <div className="absolute bottom-24 bg-red-900/90 text-white px-4 py-2 rounded-lg text-sm border border-red-500 shadow-xl backdrop-blur-md whitespace-nowrap">
-          ⚠️ Camera/Mic Error: {cameraError}. Check browser permissions.
+        <div role="alert" className="absolute bottom-20 left-1/2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-red-400/25 bg-red-950/95 px-4 py-3 text-sm text-red-100 shadow-xl backdrop-blur-md">
+          Camera or microphone error: {cameraError}. Check browser permissions.
         </div>
       )}
 
       {/* Control Bar */}
-      <div className="bg-gray-900/60 backdrop-blur-2xl px-8 py-5 rounded-[2.5rem] border border-gray-700/50 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.6)] flex items-center gap-5">
-        
-        <button 
-          onClick={toggleMute}
-          className={`p-4 rounded-full transition-all duration-300 ${isMuted ? 'bg-red-500/90 hover:bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
-        >
-          {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
-        </button>
+      <div className="flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#111719]/90 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={toggleMute} aria-label={isMuted ? 'Turn microphone on' : 'Mute microphone'}>
+              {isMuted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isMuted ? 'Turn microphone on' : 'Mute microphone'}</TooltipContent>
+        </Tooltip>
 
-        <button 
-          onClick={toggleCamera}
-          className={`p-4 rounded-full transition-all duration-300 ${isCameraOff ? 'bg-red-500/90 hover:bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
-        >
-          {isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant={isCameraOff ? 'destructive' : 'secondary'} size="icon" onClick={toggleCamera} aria-label={isCameraOff ? 'Turn camera on' : 'Turn camera off'}>
+              {isCameraOff ? <VideoOff className="size-5" /> : <Video className="size-5" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isCameraOff ? 'Turn camera on' : 'Turn camera off'}</TooltipContent>
+        </Tooltip>
 
-        <div className="w-px h-10 bg-gray-700/50 mx-2"></div>
+        <div className="mx-1 h-7 w-px bg-white/10" />
 
-        <div className="flex items-center">
-          <button 
-            onClick={toggleScreenShare}
-            className={`p-4 rounded-l-full transition-all duration-300 border-r border-gray-700/50 ${isScreenSharing ? 'bg-blue-600/90 hover:bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
-          >
-            <MonitorUp size={22} />
-          </button>
-          <button 
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-4 rounded-r-full transition-all duration-300 flex items-center justify-center ${showSettings ? 'bg-gray-700 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
-          >
-            <Settings size={22} />
-          </button>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant={isScreenSharing ? 'active' : 'secondary'} size="icon" onClick={toggleScreenShare} aria-label={isScreenSharing ? 'Stop sharing your screen' : 'Share your screen'}>
+              <MonitorUp className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isScreenSharing ? 'Stop sharing your screen' : 'Share your screen'}</TooltipContent>
+        </Tooltip>
 
-        <div className="w-px h-10 bg-gray-700/50 mx-2"></div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant={showSettings ? 'active' : 'ghost'} size="icon" onClick={() => setShowSettings(value => !value)} aria-label="Open call settings" aria-expanded={showSettings}>
+              <Settings className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Call settings</TooltipContent>
+        </Tooltip>
 
-        <button 
-          onClick={handleLeaveRoom}
-          className="px-8 py-4 rounded-full bg-red-500/90 hover:bg-red-500 transition-all duration-300 text-white flex items-center gap-3 font-semibold tracking-wide shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-        >
-          <PhoneOff size={22} /> Leave Room
-        </button>
+        <div className="mx-1 h-7 w-px bg-white/10" />
+
+        <Button variant="destructive" onClick={handleLeaveRoom} className="px-3 sm:px-4">
+          <PhoneOff className="size-5" />
+          <span className="hidden sm:inline">Leave</span>
+        </Button>
       </div>
     </div>
+    </TooltipProvider>
   );
 };

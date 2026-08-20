@@ -1,11 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-light: #334155;
+  --color-primary: #6ee7d2;
+  --color-primary-dark: #3fc6b2;
+  --color-bg: #090d0f;
+  --color-surface: #111719;
+  --color-surface-light: #20282b;
+}
+
+:root {
+  color-scheme: dark;
+  --radius: 0.75rem;
 }
 
 html, body, #root {
@@ -17,13 +22,40 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Geist', 'Avenir Next', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--color-bg);
   color: white;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+.call-stage {
+  flex: 0 0 auto;
+}
+
+@media (min-width: 768px) {
+  .call-stage--chat-docked {
+    width: calc(100% - min(23rem, 34vw));
+    margin-right: min(23rem, 34vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 code {

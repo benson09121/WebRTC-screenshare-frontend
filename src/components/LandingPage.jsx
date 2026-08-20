@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useWebRTC } from '../context/WebRTCContext';
-import { Users, KeyRound, Sparkles, Activity } from 'lucide-react';
+import { useWebRTC } from '../context/useWebRTC';
+import { Users, KeyRound, Plus, Activity } from 'lucide-react';
+import { Button } from './ui/button';
 
 export const LandingPage = () => {
-  const { roomId, joinRoom, wsStatus, startCall } = useWebRTC();
+  const { roomId, roomError, joinRoom, wsStatus, reconnectAttempt } = useWebRTC();
   const [roomInput, setRoomInput] = useState('');
 
   useEffect(() => {
     // Check URL parameters for an existing room code
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
-    if (roomFromUrl && wsStatus === 'connected' && !roomId) {
+    if (roomFromUrl && wsStatus === 'connected' && !roomId && !roomError) {
       joinRoom(roomFromUrl);
     }
-  }, [wsStatus, roomId, joinRoom]);
+  }, [wsStatus, roomId, roomError, joinRoom]);
 
   const handleCreateRoom = () => {
     // Generate a 5-character alphanumeric room code
@@ -31,7 +32,7 @@ export const LandingPage = () => {
 
   const handleJoinRoom = (e) => {
     e.preventDefault();
-    if (roomInput.trim().length > 0) {
+    if (roomInput.trim().length >= 3) {
       const code = roomInput.trim().toUpperCase();
       joinRoom(code);
       
@@ -43,43 +44,44 @@ export const LandingPage = () => {
   if (roomId) return null; // Fallback, App.jsx shouldn't render this if roomId exists
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0f172a] text-white">
+    <main className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#090d0f] px-4 text-white">
       {/* Abstract Background Elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[120px]"></div>
-        <div className="absolute top-[60%] -right-[10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[100px]"></div>
+        <div className="absolute -left-[10%] -top-[20%] h-[50%] w-[50%] rounded-full bg-teal-300/[0.08] blur-[140px]" />
+        <div className="absolute -bottom-[20%] right-[5%] h-[40%] w-[35%] rounded-full bg-teal-700/[0.06] blur-[120px]" />
       </div>
 
       {/* Connection Status */}
-      <div className="absolute top-8 left-8 flex items-center gap-2 bg-gray-900/80 backdrop-blur-sm px-4 py-2 rounded-full border border-gray-700/50 shadow-lg z-10">
-        <Activity size={16} className={wsStatus === 'connected' ? 'text-green-500' : 'text-red-500'} />
-        <span className="text-sm font-medium text-gray-200">
+      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-lg border border-white/[0.08] bg-[#111719]/80 px-3 py-2 shadow-lg backdrop-blur-sm sm:left-8 sm:top-8">
+        <Activity className={`size-4 ${wsStatus === 'connected' ? 'text-teal-300' : 'text-red-400'}`} />
+        <span className="text-xs font-medium text-zinc-300">
           Signaling: {wsStatus === 'connected' ? 'Online' : 'Offline'}
         </span>
       </div>
 
-      <div className="relative z-10 bg-gray-900/40 backdrop-blur-2xl p-10 rounded-3xl border border-gray-700/50 shadow-[0_20px_60px_-12px_rgba(0,0,0,0.8)] w-full max-w-md flex flex-col gap-8 animate-[fadeIn_0.5s_ease-out]">
+      <section className="relative z-10 flex w-full max-w-md flex-col gap-8 rounded-[1.75rem] border border-white/[0.09] bg-[#111719]/75 p-6 shadow-[0_28px_90px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-[fadeIn_0.5s_ease-out] sm:p-9">
         
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-full bg-blue-600/20 flex items-center justify-center mx-auto mb-4 border border-blue-500/30">
-            <Users size={32} className="text-blue-400" />
+          <div className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border border-teal-300/20 bg-teal-300/[0.08]">
+            <Users className="size-7 text-teal-300" />
           </div>
-          <h2 className="text-3xl font-bold text-white tracking-tight">Join a Room</h2>
-          <p className="text-gray-400 text-sm">Create a new secure P2P room or join an existing one to start a call.</p>
+          <h1 className="text-3xl font-semibold tracking-[-0.035em] text-white">Start a private room</h1>
+          <p className="mx-auto max-w-[38ch] text-sm leading-6 text-zinc-500">Two-person calls, screen sharing, and chat. Nothing is saved after the room closes.</p>
         </div>
 
-        <button 
+        <Button
           onClick={handleCreateRoom}
           disabled={wsStatus !== 'connected'}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-4 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] disabled:shadow-none transition-all flex items-center justify-center gap-3 group"
+          size="lg"
+          className="group w-full"
         >
-          <Sparkles size={20} className="group-hover:animate-pulse" />
-          {wsStatus === 'connected' ? 'Create New Room' : 'Connecting to Server...'}
-        </button>
+          <Plus className="size-4" aria-hidden="true" />
+          {wsStatus === 'connected' ? 'Create a room' : 'Connecting…'}
+        </Button>
 
         <div className="flex items-center gap-4">
           <div className="h-px bg-gray-700/50 flex-1"></div>
-          <span className="text-xs text-gray-500 font-semibold uppercase tracking-widest">OR</span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-600">or join with a code</span>
           <div className="h-px bg-gray-700/50 flex-1"></div>
         </div>
 
@@ -93,20 +95,33 @@ export const LandingPage = () => {
               value={roomInput}
               onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
               placeholder="Enter Room Code (e.g. X7K9P)"
-              className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl pl-12 pr-4 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50 focus:bg-gray-800 transition-all font-mono tracking-widest uppercase shadow-inner"
+              className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.05] pl-12 pr-4 font-mono text-sm uppercase tracking-[0.16em] text-white outline-none transition-colors placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-teal-300"
               maxLength={8}
             />
           </div>
-          <button 
+          <Button
             type="submit"
-            disabled={!roomInput.trim() || wsStatus !== 'connected'}
-            className="w-full bg-gray-800 hover:bg-gray-700 disabled:bg-gray-900/50 disabled:text-gray-600 border border-gray-700 text-white font-semibold py-4 rounded-xl transition-all"
+            disabled={roomInput.trim().length < 3 || wsStatus !== 'connected'}
+            variant="secondary"
+            className="w-full"
           >
-            Join Existing Room
-          </button>
+            Join room
+          </Button>
         </form>
 
-      </div>
-    </div>
+        {roomError ? (
+          <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/[0.08] px-4 py-3 text-sm text-red-100">
+            {roomError}
+          </div>
+        ) : null}
+
+        {wsStatus === 'reconnecting' ? (
+          <p role="status" className="text-center text-xs text-zinc-500">
+            Reconnecting to signaling server{reconnectAttempt ? ` · attempt ${reconnectAttempt}` : ''}
+          </p>
+        ) : null}
+
+      </section>
+    </main>
   );
 };
