@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Eye,
   EyeOff,
+  Film,
   FlipHorizontal,
   Focus,
   Maximize,
@@ -17,6 +18,7 @@ import {
 import { useWebRTC } from '../context/useWebRTC';
 import { getNextSelectedView } from '../lib/viewSelection';
 import { getNextScreenViewMode, getScreenVideoLayout } from '../lib/screenViewMode';
+import { getRemoteContentVolume } from '../lib/playbackVolume';
 import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
@@ -81,10 +83,16 @@ export const VideoPlayer = ({ isIdle }) => {
     setIsPresentationMode,
     remoteCameraOff,
     remoteScreenSharing,
+    localShareSource,
+    remoteShareSource,
+    participantVolume,
+    screenVolume,
+    movieVolume,
     peerPresence,
   } = useWebRTC();
 
   const mainVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const remoteCameraVideoRef = useRef(null);
   const localVideoRef = useRef(null);
   const containerRef = useRef(null);
@@ -119,10 +127,12 @@ export const VideoPlayer = ({ isIdle }) => {
       ? localScreenStream
       : remoteStream;
 
+  const remoteContentLabel = remoteShareSource?.kind === 'movie' ? 'Their movie' : 'Their screen';
+  const localContentLabel = localShareSource?.kind === 'movie' ? 'Your movie' : 'Your screen';
   const mainLabel = selectedView === 'remote-screen'
-    ? 'Their screen'
+    ? remoteContentLabel
     : selectedView === 'local-screen'
-      ? 'Your screen'
+      ? localContentLabel
       : 'Participant';
 
   const dismissPictureInPictureError = () => {
@@ -190,6 +200,28 @@ export const VideoPlayer = ({ isIdle }) => {
     const video = remoteCameraVideoRef.current;
     if (video && video.srcObject !== remoteStream) video.srcObject = remoteStream || null;
   }, [remoteStream, remoteCameraOff, selectedView]);
+
+  useEffect(() => {
+    const audio = remoteAudioRef.current;
+    if (!audio) return;
+    const audioTracks = remoteStream?.getAudioTracks() || [];
+    const audioStream = audioTracks.length ? new MediaStream(audioTracks) : null;
+    if (audio.srcObject !== audioStream) audio.srcObject = audioStream;
+  }, [remoteStream]);
+
+  useEffect(() => {
+    const audio = remoteAudioRef.current;
+    if (audio) audio.volume = participantVolume / 100;
+  }, [participantVolume, remoteStream]);
+
+  useEffect(() => {
+    const video = mainVideoRef.current;
+    if (!video || selectedView !== 'remote-screen') return;
+    video.volume = getRemoteContentVolume(remoteShareSource?.kind, {
+      screen: screenVolume,
+      movie: movieVolume,
+    }) / 100;
+  }, [mainStream, movieVolume, remoteShareSource?.kind, screenVolume, selectedView]);
 
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -300,6 +332,7 @@ export const VideoPlayer = ({ isIdle }) => {
         ref={containerRef}
         className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden bg-[#090d0f] ${(isFullscreen || isPresentationMode) && isChatOpen ? 'call-stage--chat-docked' : ''}`}
       >
+        <audio ref={remoteAudioRef} autoPlay aria-label="Participant audio" />
         {pictureInPictureError ? (
           <div role="alert" className="absolute left-1/2 top-20 z-40 flex w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-950/95 py-2 pl-4 pr-2 text-sm text-amber-100 shadow-xl">
             <p className="min-w-0 flex-1 py-1.5">{pictureInPictureError}</p>
@@ -321,14 +354,14 @@ export const VideoPlayer = ({ isIdle }) => {
                 </TabsTrigger>
                 {hasRemoteScreen ? (
                   <TabsTrigger value="remote-screen">
-                    <MonitorPlay className="size-3.5" />
-                    Their screen
+                    {remoteShareSource?.kind === 'movie' ? <Film className="size-3.5" /> : <MonitorPlay className="size-3.5" />}
+                    {remoteContentLabel}
                   </TabsTrigger>
                 ) : null}
                 {hasLocalScreen ? (
                   <TabsTrigger value="local-screen">
-                    <MonitorUp className="size-3.5" />
-                    Your screen
+                    {localShareSource?.kind === 'movie' ? <Film className="size-3.5" /> : <MonitorUp className="size-3.5" />}
+                    {localContentLabel}
                   </TabsTrigger>
                 ) : null}
               </TabsList>
@@ -355,7 +388,7 @@ export const VideoPlayer = ({ isIdle }) => {
                 ref={mainVideoRef}
                 autoPlay
                 playsInline
-                muted={selectedView === 'local-screen'}
+                muted={selectedView !== 'remote-screen'}
                 onLoadedMetadata={syncMainVideoSize}
                 onResize={syncMainVideoSize}
                 onDoubleClick={toggleFullscreen}
@@ -449,7 +482,7 @@ export const VideoPlayer = ({ isIdle }) => {
         ) : null}
 
         {isScreenView && mainStream ? (
-          <div className={`absolute z-30 transition-[opacity,transform] duration-300 motion-reduce:transition-none ${isPresentationMode ? 'bottom-3 left-3 sm:bottom-5 sm:left-5' : 'bottom-20 left-3 sm:bottom-6 sm:left-6'} ${controlsHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}>
+          <div className={`absolute z-30 transition-[opacity,transform] duration-300 motion-reduce:transition-none ${isPresentationMode ? 'bottom-3 left-3 sm:bottom-5 sm:left-5' : localShareSource?.kind === 'movie' ? 'bottom-40 left-3 sm:left-6' : 'bottom-20 left-3 sm:bottom-6 sm:left-6'} ${controlsHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}>
             <Tabs value={screenViewMode} onValueChange={handleScreenViewModeChange}>
               <TabsList className="min-h-0 gap-0.5 p-0" aria-label="Shared screen sizing">
                 <TabsTrigger value="fit" className="h-11 px-2.5" title="Show the entire shared screen">
@@ -471,6 +504,13 @@ export const VideoPlayer = ({ isIdle }) => {
           </div>
         ) : null}
 
+        {selectedView === 'remote-screen' && remoteShareSource?.kind === 'movie' ? (
+          <div className={`pointer-events-none absolute left-1/2 z-20 max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-white/10 bg-[#111719]/85 px-3 py-2 text-center text-xs text-zinc-300 backdrop-blur-xl transition-opacity ${localShareSource?.kind === 'movie' ? 'bottom-52' : 'bottom-32'} ${controlsHidden ? 'opacity-0' : 'opacity-100'}`} role="status" aria-hidden={controlsHidden}>
+            <span className="font-medium text-zinc-100">{remoteShareSource.name || 'Shared movie'}</span>
+            <span className="text-zinc-500"> · {remoteShareSource.isPlaying ? 'Playing' : 'Paused by host'}</span>
+          </div>
+        ) : null}
+
         {isScreenView && !isPresentationMode && remoteStream && !remoteCameraOff ? (
           <motion.div
             drag
@@ -483,6 +523,7 @@ export const VideoPlayer = ({ isIdle }) => {
               ref={remoteCameraVideoRef}
               autoPlay
               playsInline
+              muted
               className={`h-full w-full object-cover ${remoteMirrored ? 'scale-x-[-1]' : ''}`}
             />
             <button

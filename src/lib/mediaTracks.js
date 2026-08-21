@@ -11,3 +11,28 @@ export const createEmptyVideoTrack = ({ width = 2, height = 2 } = {}) => {
     return null;
   }
 };
+
+export const createEmptyAudioTrack = () => {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    const context = new AudioContextClass();
+    const destination = context.createMediaStreamDestination();
+    const track = destination.stream.getAudioTracks()[0];
+    if (!track) {
+      context.close().catch(() => {});
+      return null;
+    }
+
+    track.enabled = false;
+    const stop = track.stop.bind(track);
+    track.stop = () => {
+      stop();
+      context.close().catch(() => {});
+    };
+    return track;
+  } catch {
+    return null;
+  }
+};

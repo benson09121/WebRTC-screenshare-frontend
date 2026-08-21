@@ -53,6 +53,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **Final share ends:** Switch to the participant camera view.
 - **Camera unavailable or off:** Render the participant user-icon placeholder instead of retaining the final shared frame.
 - **Remote cleanup:** Hide the remote screen immediately when `screen-toggle` reports that sharing stopped, while retaining its negotiated receiver track so a later share can resume without renegotiation or a stuck loading state.
+- **Playback volume:** Keep participant microphone playback separate from shared-content playback. Call settings provide local-only 0–100% controls for participant voice, shared-screen audio, and shared-movie audio; values remain in memory and reset when the room ends or the page reloads.
 
 ## 11. Component System
 - **Foundation:** Tailwind CSS v4 with local shadcn-style components backed by Radix UI primitives.
@@ -112,3 +113,16 @@ This document outlines the UI behaviors and conditions implemented.
 - **Manual dismissal:** Every transient error banner includes a keyboard-accessible close button with an accessible name.
 - **Cleanup:** Clear pending dismissal timers when their owning component unmounts so a timer cannot update removed call UI.
 - **Blocking errors:** Room-capacity and join failures remain visible until the user retries or navigation changes because the underlying action did not succeed.
+
+## 19. Watch Together
+
+- **Entry:** A dedicated film control opens a compact source chooser for either a local video file or a direct browser-playable HTTP(S) media URL. Local files are never uploaded to signaling or persisted.
+- **Direct links:** Validate through the same hidden media player before offering Start movie. Direct URLs must be reachable without login and permit cross-origin media use. Never send the URL, query parameters, or credentials to signaling or the participant; share only a bounded display name, duration, and playback state.
+- **Provider pages:** YouTube, Netflix, and ordinary webpage links are not direct media sources. Explain this distinction and direct the user to browser-tab sharing with audio.
+- **Preparation:** Show the movie name and duration with an explicit Start movie action. Starting while another local source is active is an explicit Replace share action.
+- **Transport:** A compatible media element is captured into the existing shared-content video sender and the dedicated shared-content audio sender. Camera and microphone remain separate.
+- **Playback:** The host gets play/pause, seek, progress, and stop controls. The viewer sees the live result and a quiet Playing/Paused by host status rather than a second unsynchronized player.
+- **Source selection:** Existing local view choice remains authoritative. Labels become Your movie or Their movie when the corresponding shared source is a local file.
+- **End behavior:** Reaching the end, stopping, replacing the movie, or leaving stops captured tracks, revokes the object URL, clears file metadata, and returns affected viewers through the existing share fallback rules.
+- **Quality:** Auto uses movie-specific 24/30fps profiles. Manual screen presets remain available, but the source frame rate remains browser and file dependent.
+- **Compatibility:** Feature-detect `captureStream()`/`mozCaptureStream()`. When unavailable or the codec cannot be decoded, show an actionable transient error suggesting current Chrome/Firefox or browser-tab sharing with audio.

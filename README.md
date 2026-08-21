@@ -8,17 +8,20 @@
   One link. Two peers. No account.
 </p>
 
-PairBeam is a database-free WebRTC room for two people to call, share screens, and chat from their browsers. Rooms are temporary, messages stay in memory, and either participant can share a screen—even at the same time.
+PairBeam is a database-free WebRTC room for two people to call, share screens or a local movie, and chat from their browsers. Rooms are temporary, messages stay in memory, and either participant can share content—even at the same time.
 
 ## What it does
 
 - Starts a private two-person room without sign-up or installation
 - Supports microphone, camera, and simultaneous two-way screen sharing
+- Streams a compatible movie selected from the host computer or loaded from a direct media URL without uploading it to PairBeam
+- Gives the movie host play, pause, seek, and stop controls with 24/30fps adaptive quality
 - Lets each participant independently choose whose screen to view
 - Returns to the participant camera or avatar when a share ends
 - Offers adaptive Auto quality plus native, 1080p60, 720p60, and 480p30 sharing presets
 - Includes a distraction-free presentation mode with Fit, Fill, and scrollable 100% screen views
-- Keeps shared audio live when the microphone is muted and can use an exposed PipeWire/PulseAudio monitor on Linux
+- Sends microphone and shared-content audio independently, and can use an exposed PipeWire/PulseAudio monitor on Linux
+- Lets each listener independently adjust participant voice, shared-screen audio, and shared-movie audio without changing what the other person hears
 - Floats the participant, local camera, or active video above the desktop with browser Picture-in-Picture support
 - Keeps chat available beside fullscreen content without covering the shared screen
 - Shows actual screen capture/encoded resolution, FPS, bitrate, connection health, and direct or TURN-relayed status
@@ -55,7 +58,7 @@ Room membership exists only in the signaling server's process memory. PairBeam h
 ### Requirements
 
 - Node.js 20.19+ or 22.12+
-- A modern browser with WebRTC and screen-capture support
+- A modern browser with WebRTC and screen-capture support; local-movie sharing currently requires media-element `captureStream()` support
 - The [PairBeam signaling server](https://github.com/benson09121/WebRTC-screenshare-backend)
 
 Place the frontend and backend repositories beside each other, then start them in separate terminals.
@@ -82,20 +85,23 @@ Create a `.env.local` file in the frontend repository when the signaling or TURN
 
 ```dotenv
 VITE_WS_URL=wss://signal.example.com
-VITE_TURN_URL=turn:turn.example.com:3478
+VITE_STUN_URLS=stun:stun.example.com:3478
+VITE_TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:443?transport=tcp
 VITE_TURN_USERNAME=deployment-username
 VITE_TURN_PASSWORD=deployment-credential
 ```
 
-TURN is optional during local development but strongly recommended for production reliability across restrictive networks. Use short-lived TURN credentials where your provider supports them, and never commit credentials to the repository.
+`VITE_STUN_URLS` and `VITE_TURN_URLS` accept comma-separated URLs; the singular `VITE_TURN_URL` remains supported. TURN is optional during local development but strongly recommended for production reliability across restrictive networks. Use short-lived TURN credentials where your provider supports them, and never commit credentials to the repository.
 
 ## Production notes
 
 - Serve the frontend over HTTPS and signaling over WSS; browser media APIs require a secure context outside localhost.
 - Configure TURN before treating connection reliability as production-ready.
+- Deploy TURN in regions near the participants, with UDP plus TCP/TLS fallback. A direct connection does not send media through TURN, so moving TURN cannot improve an already-direct 8 ms UDP path.
 - Treat a room link as an invitation secret: anyone with the link can try to join until the two-person room is full.
 - Signaling handles room identifiers plus SDP/ICE coordination metadata, even though it does not receive call or chat content.
 - A TURN server may relay encrypted WebRTC packets when peers cannot connect directly.
+- Movie sharing depends on the browser being able to decode the selected source. MP4 with H.264/AAC and WebM are the safest choices. Direct links must be HTTP(S), reachable without login, and served with compatible media CORS headers; YouTube, Netflix, and normal webpage URLs should be shared as a browser tab with audio instead.
 
 ## Verification
 
@@ -116,6 +122,7 @@ npm test
 
 - [Product roadmap](./ROADMAP.md)
 - [UI and interaction specification](./ui_spec.md)
+- [Internship reflection](./INTERNSHIP_REFLECTION.md)
 
 The current roadmap prioritizes safer screen-source replacement, keyboard shortcuts, pre-call device checks, accessibility testing, and stronger production hardening while keeping PairBeam database-free and limited to two participants.
 

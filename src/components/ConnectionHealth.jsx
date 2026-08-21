@@ -10,6 +10,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
+import { getConnectionHealthPresentation } from '../lib/connectionHealth';
 import { Button } from './ui/button';
 
 const QUALITY_COPY = {
@@ -17,12 +18,6 @@ const QUALITY_COPY = {
   fair: { label: 'Connection limited', dot: 'bg-amber-300', text: 'text-amber-200' },
   poor: { label: 'Connection poor', dot: 'bg-red-400', text: 'text-red-200' },
   unknown: { label: 'Measuring connection', dot: 'bg-zinc-500', text: 'text-zinc-300' },
-};
-
-const LIMITATION_COPY = {
-  cpu: { label: 'Device limiting video', dot: 'bg-amber-300', text: 'text-amber-200' },
-  bandwidth: { label: 'Upload limiting video', dot: 'bg-amber-300', text: 'text-amber-200' },
-  other: { label: 'Video quality adapting', dot: 'bg-amber-300', text: 'text-amber-200' },
 };
 
 const formatBitrate = value => {
@@ -37,65 +32,26 @@ const formatVideo = video => {
   return `${video.width} × ${video.height}${fps}`;
 };
 
-const getAction = stats => {
-  if (stats.qualityLimitationReason === 'cpu') {
-    return {
-      icon: Cpu,
-      title: 'CPU limited',
-      description: 'Close heavy apps or lower the screen-share resolution.',
-    };
-  }
-  if (stats.qualityLimitationReason === 'bandwidth') {
-    return {
-      icon: Network,
-      title: 'Network limited',
-      description: 'Use a stronger connection or lower the screen-share quality.',
-    };
-  }
-  if (stats.qualityLimitationReason === 'other') {
-    return {
-      icon: Gauge,
-      title: 'Browser adapting video',
-      description: 'The browser reduced resolution or frame rate for a non-network, non-CPU reason.',
-    };
-  }
-  if (stats.quality === 'poor') {
-    return {
-      icon: TriangleAlert,
-      title: 'Unstable connection',
-      description: 'Packet loss or latency is affecting this call.',
-    };
-  }
-  if (stats.quality === 'fair') {
-    return {
-      icon: Network,
-      title: 'Connection adapting',
-      description: 'Moderate packet loss or latency may reduce call quality.',
-    };
-  }
-  return null;
+const ACTION_ICONS = {
+  cpu: Cpu,
+  bandwidth: Network,
+  other: Gauge,
+  poor: TriangleAlert,
+  fair: Network,
 };
 
 export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
   const { connected, connectionStats, peerPresence, wsStatus } = useWebRTC();
 
-  const quality = connected ? connectionStats.quality : 'unknown';
+  const presentation = getConnectionHealthPresentation({
+    connected,
+    stats: connectionStats,
+    wsStatus,
+    peerPresence,
+  });
+  const { quality, statusLabel, action } = presentation;
   const copy = QUALITY_COPY[quality] || QUALITY_COPY.unknown;
-  const limitation = connected
-    ? LIMITATION_COPY[connectionStats.qualityLimitationReason]
-    : null;
-  const displayCopy = limitation || copy;
-  const statusLabel = connected
-    ? displayCopy.label
-    : wsStatus === 'reconnecting'
-      ? 'Signaling reconnecting'
-      : peerPresence === 'left'
-        ? 'Participant left'
-        : peerPresence === 'joining' || peerPresence === 'reconnecting'
-          ? 'Call reconnecting'
-          : 'Waiting for participant';
-  const action = getAction(connectionStats);
-  const ActionIcon = action?.icon;
+  const ActionIcon = action ? ACTION_ICONS[action.kind] : null;
 
   return (
     <div className={`pointer-events-auto relative transition-opacity duration-300 ${isIdle && !open ? 'opacity-0' : 'opacity-100'}`}>
@@ -107,7 +63,7 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
         aria-controls="connection-details"
         className="w-fit bg-[#111719]/90"
       >
-        <span className={`size-2 rounded-full ${displayCopy.dot} ${connected ? '' : 'animate-pulse'}`} />
+        <span className={`size-2 rounded-full ${copy.dot} ${connected ? '' : 'animate-pulse'}`} />
         {statusLabel}
       </Button>
 
@@ -119,7 +75,7 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
         >
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
             <div>
-              <p className={`text-sm font-semibold ${displayCopy.text}`}>{statusLabel}</p>
+              <p className={`text-sm font-semibold ${copy.text}`}>{statusLabel}</p>
               <p className="mt-0.5 text-xs text-zinc-500">
                 {connectionStats.connectionPath === 'relay'
                   ? 'Relayed through TURN'

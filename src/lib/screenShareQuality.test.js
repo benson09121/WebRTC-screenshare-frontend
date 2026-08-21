@@ -48,6 +48,8 @@ test('recovers gradually after eight healthy samples and honors cooldown', () =>
 test('keeps profile selection within the available range', () => {
   assert.equal(getAutoQualityPreset('motion', -5).label, '1080p · 60fps');
   assert.equal(getAutoQualityPreset('detail', 99).label, '480p · 15fps');
+  assert.equal(getAutoQualityPreset('movie', 0).label, '1080p · 30fps');
+  assert.equal(getAutoQualityPreset('movie', 99).label, '480p · 24fps');
 });
 
 test('summarizes the active screen sender dimensions, fps, bitrate, and limitation', () => {

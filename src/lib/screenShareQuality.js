@@ -5,6 +5,12 @@ export const AUTO_QUALITY_PROFILES = Object.freeze({
     Object.freeze({ label: '720p · 30fps', width: 1280, height: 720, frameRate: 30, bitrate: 3500000 }),
     Object.freeze({ label: '480p · 30fps', width: 854, height: 480, frameRate: 30, bitrate: 2200000 }),
   ]),
+  movie: Object.freeze([
+    Object.freeze({ label: '1080p · 30fps', width: 1920, height: 1080, frameRate: 30, bitrate: 8000000 }),
+    Object.freeze({ label: '720p · 30fps', width: 1280, height: 720, frameRate: 30, bitrate: 4500000 }),
+    Object.freeze({ label: '720p · 24fps', width: 1280, height: 720, frameRate: 24, bitrate: 3000000 }),
+    Object.freeze({ label: '480p · 24fps', width: 854, height: 480, frameRate: 24, bitrate: 1800000 }),
+  ]),
   detail: Object.freeze([
     Object.freeze({ label: '1080p · 30fps', width: 1920, height: 1080, frameRate: 30, bitrate: 6000000 }),
     Object.freeze({ label: '1080p · 20fps', width: 1920, height: 1080, frameRate: 20, bitrate: 4000000 }),

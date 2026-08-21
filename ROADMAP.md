@@ -22,17 +22,55 @@ This roadmap keeps the product database-free. Rooms remain ephemeral, signaling 
 - [x] Establish reusable shadcn-style Button, Tabs, and Tooltip components.
 - [x] Add accessible labels, focus rings, live empty states, and responsive call controls.
 - [x] Add an in-call connection health indicator based on `getStats()`.
-- [x] Show actionable states: “CPU limited,” “network limited,” packet loss, and actual video quality.
+- [x] Show actionable transport loss/latency and browser encoder-adaptation states alongside actual video quality.
 - [x] Add signaling reconnection with bounded exponential backoff.
+- [x] Preserve a healthy WebRTC media path during a brief signaling reconnect with a five-second ephemeral room-seat grace period.
+- [x] Add signaling ping/pong heartbeats so idle proxy timeouts and half-open sockets recover instead of hanging silently.
+- [x] Ignore late state events from replaced peer connections so they cannot close the current call UI.
+- [x] Recover failed media paths with a guarded ICE restart and delay recovery for transient disconnects.
 - [x] Show “participant left” and allow waiting for them to rejoin the same ephemeral room.
 - [x] Surface whether the selected connection is direct or relayed through TURN.
 - [x] Separate transport health from browser encoder limits so CPU pressure is no longer mislabeled as a bad connection.
 - [x] Name the active encoder limitation in the health control: device/CPU, upload bandwidth, or another browser adaptation reason.
+- [x] Keep the global health status transport-based when the browser adapts an otherwise healthy outbound encoder.
 - [x] Keep captured screen audio live when the microphone is muted, unmuted, or switched.
 - [x] Request system and window audio with the correct top-level `getDisplayMedia()` options and report when the chosen source returns no audio track.
 - [x] Add standard video Picture-in-Picture controls for the participant, local camera, and active main video.
 - [x] Detect PipeWire/PulseAudio monitor inputs and offer an explicit Linux desktop-audio fallback when the browser exposes one.
 - [ ] Configure production TURN credentials in the deployment environment.
+
+## Investigation — reconnecting, ICE routing, and endpoint load
+
+### Why “Establishing the private connection” could remain visible
+
+- [x] Fix signaling reconnects being treated as a full peer leave/join. A brief WebSocket loss now reserves the same in-memory room seat for five seconds and does not tear down a healthy direct media path.
+- [x] Fix delayed `closed` or `failed` events from an old `RTCPeerConnection` clearing the newer connection state.
+- [x] Await and report call-start failures instead of leaving an unhandled offer failure in the joining state.
+- [x] Make optional `RTCRtpSender.setStreams()` association non-fatal so a browser-specific exception cannot prevent the answer from being sent.
+- [x] Guard answer/candidate work against a peer connection that was replaced while asynchronous negotiation was running.
+- [x] Clear an obsolete WebSocket message handler when signaling reconnects.
+- [ ] Add a negotiation generation ID to offers, answers, and candidates to reject every late message from an older negotiation.
+- [ ] Add a two-browser Playwright reconnect test covering signaling-only loss, transient ICE loss, ICE failure, and a real peer departure.
+
+### Does a nearer STUN or TURN server make it faster?
+
+- The reported sample—direct UDP, 8 ms round trip, and 0% packet loss—already has a healthy direct transport. STUN helps discover candidates during setup and is not in the ongoing media path. TURN carries media only when direct connectivity fails, so changing TURN cannot improve that direct call.
+- [x] Keep trickle ICE enabled by forwarding each candidate as it becomes available instead of waiting for gathering to complete.
+- [x] Accept comma-separated STUN and TURN URLs so production can provide regional endpoints plus UDP and TCP/TLS fallbacks.
+- [ ] Provision geographically distributed TURN endpoints and select them through latency-aware DNS, Anycast, or deployment-region configuration.
+- [ ] Use short-lived TURN credentials and monitor direct-versus-relay success rates without storing call content or persistent user identities.
+- A browser does not guarantee that ordering several TURN URLs makes it choose the geographically nearest server. Production locality should be handled by the TURN provider or deployment routing.
+
+### Is camera plus screen or movie sharing heavy for P2P?
+
+- Yes. Each active sender captures and encodes camera plus shared content, uploads both streams, and simultaneously downloads, decodes, and renders the other participant's streams. If both participants run on one PC, that one device performs both sides of the workload and is not a representative performance test.
+- Direct P2P avoids a media server but does not remove endpoint encoding and decoding cost. A TURN relay changes the network path, not the browser's capture/codec workload.
+- The reported 640 × 360 at 7 fps alongside 8 ms RTT and 0% loss is consistent with browser encoder adaptation, not slow ICE negotiation. `availableOutgoingBitrate` is an estimate and `qualityLimitationReason: bandwidth` can coexist with healthy packet-loss/latency metrics.
+- [x] Use a 24/30fps movie profile and Auto quality rather than encoding film content at 60fps.
+- [ ] Add per-outbound-stream diagnostics so camera and shared-content limitations are identified independently.
+- [ ] Add a pre-call performance hint when both room participants are detected on the same device during local testing.
+
+References: [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/), [ICE restart](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/restartIce), [WebRTC peer connections and trickle ICE](https://webrtc.org/getting-started/peer-connections), and [TURN server guidance](https://webrtc.org/getting-started/turn-server).
 
 ## Next — screen-share experience
 
@@ -75,7 +113,24 @@ This roadmap keeps the product database-free. Rooms remain ephemeral, signaling 
 - A community implementation has successfully used Linux monitor sources and browser-side track replacement, but application-only routing still requires PipeWire/PulseAudio routing or a browser-native window-audio implementation. See [Screenshare with audio on Linux](https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux).
 - [ ] Validate native tab audio, whole-desktop audio, and the monitor fallback on Chrome/Chromium under both Wayland and X11.
 - [x] Add an echo-risk warning when a full-output monitor source is selected.
-- [ ] Move shared-content audio to a dedicated WebRTC transceiver so the receiver can control microphone and shared-audio volume independently.
+- [x] Move shared-content audio to a dedicated WebRTC transceiver so microphone mute/switching and shared audio use independent senders.
+
+## Now — Watch Together
+
+- [x] Let either participant choose a local movie without uploading it to PairBeam or storing it in a database.
+- [x] Support direct browser-playable media URLs without sending the URL to signaling or the other participant.
+- [x] Validate direct links, require HTTP(S), reject known video-page providers, enforce a load timeout, and explain media CORS requirements.
+- [x] Capture a compatible local `<video>` player and send its video and audio through the negotiated shared-content transceivers.
+- [x] Add source-aware “Your movie” and “Their movie” views while retaining simultaneous two-way source selection.
+- [x] Add host play, pause, seek, progress, stop, and automatic end-of-movie cleanup.
+- [x] Use a 24/30fps adaptive movie profile instead of spending bandwidth encoding film content at 60fps.
+- [x] Keep participant microphone playback independent from the selected shared-content audio.
+- [x] Feature-detect media-element capture and explain the Chrome/Firefox or tab-sharing fallback when unavailable.
+- [ ] Add an invitation with Accept/Decline before the host begins sending a movie.
+- [x] Add independent local receiver-volume controls for participant voice, shared-screen audio, and shared-movie audio.
+- [ ] Add a “we both have this file” mode that fingerprints local files and synchronizes controls without sending movie media.
+- [ ] Research chunked RTCDataChannel + Media Source Extensions transfer only if one-copy, original-quality buffered playback becomes a product requirement.
+- [ ] Add Playwright coverage with mocked media-element capture plus two-device Chrome and Firefox compatibility testing.
 
 ## Requested focus — chatbox and fullscreen experience
 
@@ -110,6 +165,7 @@ This roadmap keeps the product database-free. Rooms remain ephemeral, signaling 
 - [x] Add unit tests for WebRTC statistics classification.
 - [x] Add a signaling protocol test for room capacity, reconnection, and peer presence.
 - Add production security headers, an explicit CORS allowlist, and dependency update automation.
+- [x] Document the project-specific internship learning outcomes in [INTERNSHIP_REFLECTION.md](./INTERNSHIP_REFLECTION.md).
 
 ## Explicitly out of scope
 

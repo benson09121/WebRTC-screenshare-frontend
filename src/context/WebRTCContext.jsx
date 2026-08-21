@@ -1,18 +1,30 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useSignaling } from '../hooks/useSignaling';
 import { EMPTY_CONNECTION_STATS, summarizeWebRTCStats } from '../lib/webrtcStats';
-import { createEmptyVideoTrack } from '../lib/mediaTracks';
+import { createEmptyAudioTrack, createEmptyVideoTrack } from '../lib/mediaTracks';
+import { DEFAULT_PLAYBACK_VOLUMES, normalizePlaybackVolume } from '../lib/playbackVolume';
 import { WebRTCContext } from './useWebRTC';
 
 const getIceServers = () => {
+  const configuredStunUrls = import.meta.env.VITE_STUN_URLS
+    ?.split(',')
+    .map(url => url.trim())
+    .filter(Boolean);
   const servers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
+    {
+      urls: configuredStunUrls?.length
+        ? configuredStunUrls
+        : ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'],
+    },
   ];
 
-  if (import.meta.env.VITE_TURN_URL) {
+  const configuredTurnUrls = (import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_URL)
+    ?.split(',')
+    .map(url => url.trim())
+    .filter(Boolean);
+  if (configuredTurnUrls?.length) {
     servers.push({
-      urls: import.meta.env.VITE_TURN_URL,
+      urls: configuredTurnUrls,
       username: import.meta.env.VITE_TURN_USERNAME,
       credential: import.meta.env.VITE_TURN_PASSWORD,
     });
@@ -28,11 +40,21 @@ export const WebRTCProvider = ({ children }) => {
   const { status, ws, reconnectAttempt } = useSignaling(wsUrl);
 
   const pcRef = useRef(null);
+  const signalingSocketRef = useRef(ws);
+  const disconnectRecoveryTimerRef = useRef(null);
+  const isCallerRef = useRef(false);
+  const iceRestartInFlightRef = useRef(false);
+  const restartIceRef = useRef(null);
   const dataChannelRef = useRef(null);
   const localStreamRef = useRef(null);
   const localScreenStreamRef = useRef(null);
   const audioTransceiverRef = useRef(null);
   const outgoingAudioTrackRef = useRef(null);
+  const audioPlaceholderTrackRef = useRef(null);
+  const contentAudioTransceiverRef = useRef(null);
+  const contentAudioPlaceholderTrackRef = useRef(null);
+  const localContentAudioTrackRef = useRef(null);
+  const contentAssociationStreamRef = useRef(null);
   const cameraTransceiverRef = useRef(null);
   const screenTransceiverRef = useRef(null);
   const screenPlaceholderTrackRef = useRef(null);
@@ -59,18 +81,39 @@ export const WebRTCProvider = ({ children }) => {
   const [roomError, setRoomError] = useState(null);
   const [peerPresence, setPeerPresence] = useState('waiting');
   const [connectionStats, setConnectionStats] = useState(EMPTY_CONNECTION_STATS);
+  const [participantVolume, setParticipantVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.participant);
+  const [screenVolume, setScreenVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.screen);
+  const [movieVolume, setMovieVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.movie);
   
   const [isCameraOff, setIsCameraOff] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
   const [remoteMirrored, setRemoteMirrored] = useState(true);
   const [remoteCameraOff, setRemoteCameraOff] = useState(true);
   const [remoteScreenSharing, setRemoteScreenSharing] = useState(false);
+  const [localShareSource, setLocalShareSource] = useState(null);
+  const [remoteShareSource, setRemoteShareSource] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
 
+  const setParticipantVolume = useCallback(value => {
+    setParticipantVolumeState(normalizePlaybackVolume(value));
+  }, []);
+  const setScreenVolume = useCallback(value => {
+    setScreenVolumeState(normalizePlaybackVolume(value));
+  }, []);
+  const setMovieVolume = useCallback(value => {
+    setMovieVolumeState(normalizePlaybackVolume(value));
+  }, []);
+
+  useEffect(() => {
+    signalingSocketRef.current = ws;
+  }, [ws]);
+
   const isCameraOffRef = useRef(isCameraOff);
   const isScreenSharingRef = useRef(false);
+  const localShareSourceRef = useRef(null);
   useEffect(() => { isCameraOffRef.current = isCameraOff; }, [isCameraOff]);
+  useEffect(() => { localShareSourceRef.current = localShareSource; }, [localShareSource]);
 
   const setIsScreenSharing = useCallback((nextValue) => {
     const resolvedValue = typeof nextValue === 'function'
@@ -160,33 +203,49 @@ export const WebRTCProvider = ({ children }) => {
       transceiver => transceiver.receiver.track.kind === 'video',
     );
 
-    audioTransceiverRef.current = transceivers.find(
+    const audioTransceivers = transceivers.filter(
       transceiver => transceiver.receiver.track.kind === 'audio',
-    ) || null;
+    );
+
+    audioTransceiverRef.current = audioTransceivers[0] || null;
+    contentAudioTransceiverRef.current = audioTransceivers[1] || null;
     cameraTransceiverRef.current = videoTransceivers[0] || null;
     screenTransceiverRef.current = videoTransceivers[1] || null;
   }, []);
 
   const resetRemotePeer = () => {
+    if (disconnectRecoveryTimerRef.current) {
+      window.clearTimeout(disconnectRecoveryTimerRef.current);
+      disconnectRecoveryTimerRef.current = null;
+    }
+    iceRestartInFlightRef.current = false;
     if (dataChannelRef.current) {
       dataChannelRef.current.close();
       dataChannelRef.current = null;
     }
     if (pcRef.current) {
-      pcRef.current.close();
+      const pc = pcRef.current;
       pcRef.current = null;
+      pc.close();
     }
     pendingCandidates.current = [];
     audioTransceiverRef.current = null;
+    audioPlaceholderTrackRef.current?.stop();
+    audioPlaceholderTrackRef.current = null;
+    contentAudioTransceiverRef.current = null;
     cameraTransceiverRef.current = null;
     screenTransceiverRef.current = null;
     screenPlaceholderTrackRef.current?.stop();
     screenPlaceholderTrackRef.current = null;
+    contentAudioPlaceholderTrackRef.current?.stop();
+    contentAudioPlaceholderTrackRef.current = null;
+    contentAssociationStreamRef.current = null;
     previousStatsRef.current = new Map();
     setConnectionStats(EMPTY_CONNECTION_STATS);
     setRemoteStream(null);
     setRemoteScreenStream(null);
     setRemoteScreenSharing(false);
+    setRemoteShareSource(null);
     setRemoteCameraOff(true);
     setConnected(false);
   };
@@ -204,6 +263,26 @@ export const WebRTCProvider = ({ children }) => {
       }
       if (data.type === 'screen-toggle' && typeof data.isScreenSharing === 'boolean') {
         setRemoteScreenSharing(data.isScreenSharing);
+        setRemoteShareSource(data.isScreenSharing
+          ? {
+              kind: data.source === 'movie' ? 'movie' : 'screen',
+              name: typeof data.name === 'string' ? data.name.slice(0, 160) : null,
+              duration: Number.isFinite(data.duration) ? data.duration : null,
+              isPlaying: data.isPlaying !== false,
+              currentTime: Number.isFinite(data.currentTime) ? data.currentTime : 0,
+            }
+          : null);
+        return;
+      }
+      if (data.type === 'movie-state') {
+        setRemoteShareSource(current => current?.kind === 'movie'
+          ? {
+              ...current,
+              isPlaying: typeof data.isPlaying === 'boolean' ? data.isPlaying : current.isPlaying,
+              currentTime: Number.isFinite(data.currentTime) ? data.currentTime : current.currentTime,
+              duration: Number.isFinite(data.duration) ? data.duration : current.duration,
+            }
+          : current);
         return;
       }
       if (data.type === 'chat' && typeof data.text === 'string' && data.text.length <= 2000) {
@@ -223,7 +302,15 @@ export const WebRTCProvider = ({ children }) => {
     const sendInitialState = () => {
       if (channel.readyState !== 'open') return;
       channel.send(JSON.stringify({ type: 'camera-toggle', isCameraOff: isCameraOffRef.current }));
-      channel.send(JSON.stringify({ type: 'screen-toggle', isScreenSharing: isScreenSharingRef.current }));
+      channel.send(JSON.stringify({
+        type: 'screen-toggle',
+        isScreenSharing: isScreenSharingRef.current,
+        source: localShareSourceRef.current?.kind || 'screen',
+        name: localShareSourceRef.current?.name || null,
+        duration: localShareSourceRef.current?.duration || null,
+        isPlaying: localShareSourceRef.current?.isPlaying !== false,
+        currentTime: localShareSourceRef.current?.currentTime || 0,
+      }));
     };
 
     channel.onmessage = handleDataMessage;
@@ -235,7 +322,8 @@ export const WebRTCProvider = ({ children }) => {
   useEffect(() => {
     if (status !== 'connected' || !ws) return;
 
-    ws.onmessage = async (event) => {
+    const handleSignalingMessage = async (event) => {
+      if (signalingSocketRef.current !== ws) return;
       let msg;
       try {
         msg = JSON.parse(event.data);
@@ -246,7 +334,13 @@ export const WebRTCProvider = ({ children }) => {
 
       if (msg.type === 'room-joined') {
         setRoomError(null);
-        setPeerPresence(msg.participantCount > 1 ? 'joining' : 'waiting');
+        const mediaConnected = pcRef.current?.connectionState === 'connected';
+        if (mediaConnected) {
+          setConnected(true);
+          setPeerPresence('connected');
+        } else {
+          setPeerPresence(msg.participantCount > 1 ? 'joining' : 'waiting');
+        }
       } else if (msg.type === 'room-full') {
         resetRemotePeer();
         setRoomError('That room already has two participants.');
@@ -262,22 +356,56 @@ export const WebRTCProvider = ({ children }) => {
         setUnreadCount(0);
         setIsChatOpen(false);
         setPeerPresence('left');
+      } else if (msg.type === 'peer-reconnecting') {
+        // The signaling socket can reconnect while the direct media path remains healthy.
+        if (pcRef.current?.connectionState !== 'connected') setPeerPresence('reconnecting');
+      } else if (msg.type === 'peer-reconnected') {
+        if (pcRef.current?.connectionState === 'connected') {
+          setConnected(true);
+          setPeerPresence('connected');
+        } else {
+          resetRemotePeer();
+          setPeerPresence('joining');
+          try {
+            await startCallRef.current?.();
+          } catch (error) {
+            console.error('[WebRTC] Failed to renegotiate after peer reconnect:', error);
+            setPeerPresence('reconnecting');
+          }
+        }
       } else if (msg.type === 'peer-joined') {
         console.log("[Signaling] Peer joined. Initiating call...");
         resetRemotePeer();
         setPeerPresence('joining');
-        startCallRef.current?.();
+        try {
+          await startCallRef.current?.();
+        } catch (error) {
+          console.error('[WebRTC] Failed to start call:', error);
+          setPeerPresence('reconnecting');
+        }
+      } else if (msg.type === 'ice-restart-request') {
+        if (isCallerRef.current) await restartIceRef.current?.();
       } else if (msg.type === 'offer') {
         try {
-          if (pcRef.current) resetRemotePeer();
+          const canReuseConnection = Boolean(
+            msg.iceRestart
+            && pcRef.current
+            && pcRef.current.signalingState !== 'closed',
+          );
+          if (pcRef.current && !canReuseConnection) resetRemotePeer();
           setPeerPresence('joining');
-          initPeerConnectionRef.current?.(false);
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg));
-          bindTransceivers(pcRef.current);
+          if (!canReuseConnection) initPeerConnectionRef.current?.(false);
+          const pc = pcRef.current;
+          if (!pc) return;
+          isCallerRef.current = false;
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.type, sdp: msg.sdp }));
+          if (pcRef.current !== pc) return;
+          bindTransceivers(pc);
 
-          pendingCandidates.current.forEach(async c => {
-            try { await pcRef.current.addIceCandidate(c); } catch (e) { console.error('ICE error', e); }
-          });
+          for (const candidate of pendingCandidates.current) {
+            if (pcRef.current !== pc) return;
+            try { await pc.addIceCandidate(candidate); } catch (e) { console.error('ICE error', e); }
+          }
           pendingCandidates.current = [];
 
           // Force incoming transceivers to sendrecv and attach local tracks!
@@ -287,6 +415,9 @@ export const WebRTCProvider = ({ children }) => {
             : localStreamRef.current?.getAudioTracks()[0];
           const videoTrack = localStreamRef.current?.getVideoTracks()[0];
           const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
+          const contentAudioTrack = localContentAudioTrackRef.current?.readyState === 'live'
+            ? localContentAudioTrackRef.current
+            : null;
           
           if (audioTransceiverRef.current) {
             audioTransceiverRef.current.direction = 'sendrecv';
@@ -304,21 +435,54 @@ export const WebRTCProvider = ({ children }) => {
               if (!screenTrack) screenPlaceholderTrackRef.current = outgoingScreenTrack;
             }
           }
+          if (contentAudioTransceiverRef.current) {
+            contentAudioTransceiverRef.current.direction = 'sendrecv';
+            const outgoingContentAudioTrack = contentAudioTrack || createEmptyAudioTrack();
+            if (outgoingContentAudioTrack) {
+              await contentAudioTransceiverRef.current.sender.replaceTrack(outgoingContentAudioTrack);
+              if (!contentAudioTrack) contentAudioPlaceholderTrackRef.current = outgoingContentAudioTrack;
+            }
+          }
 
-          const answer = await pcRef.current.createAnswer();
-          await pcRef.current.setLocalDescription(answer);
+          const contentTracks = [
+            screenTransceiverRef.current?.sender.track,
+            contentAudioTransceiverRef.current?.sender.track,
+          ].filter(Boolean);
+          if (contentTracks.length) {
+            contentAssociationStreamRef.current = new MediaStream(contentTracks);
+            try {
+              screenTransceiverRef.current?.sender.setStreams?.(contentAssociationStreamRef.current);
+              contentAudioTransceiverRef.current?.sender.setStreams?.(contentAssociationStreamRef.current);
+            } catch (error) {
+              console.warn('[WebRTC] Browser could not associate shared-content tracks:', error);
+            }
+          }
+
+          if (pcRef.current !== pc) return;
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
           console.log("[Signaling] Sending answer");
-          ws.send(JSON.stringify(pcRef.current.localDescription));
+          if (pcRef.current === pc && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(pc.localDescription));
+          }
         } catch (err) {
           console.error("[WebRTC] Error handling offer:", err);
         }
       } else if (msg.type === 'answer') {
-        if (!pcRef.current) return;
-        console.log("[Signaling] Received answer");
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg));
-
-        pendingCandidates.current.forEach(c => pcRef.current.addIceCandidate(c));
-        pendingCandidates.current = [];
+        const pc = pcRef.current;
+        if (!pc) return;
+        try {
+          console.log("[Signaling] Received answer");
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.type, sdp: msg.sdp }));
+          if (pcRef.current !== pc) return;
+          for (const candidate of pendingCandidates.current) {
+            try { await pc.addIceCandidate(candidate); } catch (error) { console.warn('ICE error', error); }
+          }
+          pendingCandidates.current = [];
+          iceRestartInFlightRef.current = false;
+        } catch (error) {
+          if (pcRef.current === pc) console.error('[WebRTC] Error handling answer:', error);
+        }
       } else if (msg.type === 'candidate') {
         try {
           const candidate = new RTCIceCandidate(msg.candidate);
@@ -333,6 +497,10 @@ export const WebRTCProvider = ({ children }) => {
           console.error("[WebRTC] Error handling candidate:", err);
         }
       }
+    };
+    ws.onmessage = handleSignalingMessage;
+    return () => {
+      if (ws.onmessage === handleSignalingMessage) ws.onmessage = null;
     };
   }, [status, ws, bindTransceivers, setIsChatOpen]);
 
@@ -351,25 +519,34 @@ export const WebRTCProvider = ({ children }) => {
 
     const pc = new RTCPeerConnection(getIceServers());
     pcRef.current = pc;
+    isCallerRef.current = isCaller;
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+      if (pcRef.current !== pc) return;
+      const socket = signalingSocketRef.current;
+      if (event.candidate && socket?.readyState === WebSocket.OPEN) {
         console.log("[WebRTC] Sending ICE candidate");
-        ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+        socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
       }
     };
 
     pc.ontrack = (event) => {
+      if (pcRef.current !== pc) return;
       console.log("[WebRTC] Track received:", event.track.kind);
 
-      if (!screenTransceiverRef.current) bindTransceivers(pc);
+      if (!screenTransceiverRef.current || !contentAudioTransceiverRef.current) bindTransceivers(pc);
       const screenTransceiver = screenTransceiverRef.current;
+      const contentAudioTransceiver = contentAudioTransceiverRef.current;
       const isScreen = event.track.kind === 'video' && (
         event.transceiver === screenTransceiver
         || (screenTransceiver?.mid && event.transceiver.mid === screenTransceiver.mid)
       );
+      const isContentAudio = event.track.kind === 'audio' && (
+        event.transceiver === contentAudioTransceiver
+        || (contentAudioTransceiver?.mid && event.transceiver.mid === contentAudioTransceiver.mid)
+      );
       
-      if (!isScreen) {
+      if (!isScreen && !isContentAudio) {
         // Audio or Camera
         setRemoteStream(prev => {
           if (prev) {
@@ -381,46 +558,85 @@ export const WebRTCProvider = ({ children }) => {
           return new MediaStream([event.track]);
         });
       } else {
-        // Screen Share
+        // Shared content (screen or movie) keeps video and audio in one remote stream.
         setRemoteScreenStream(prev => {
-          if (prev) {
-            if (!prev.getTracks().find(t => t.id === event.track.id)) {
-              prev.addTrack(event.track);
-            }
-            return new MediaStream(prev.getTracks());
-          }
-          return new MediaStream([event.track]);
+          const tracksById = new Map(
+            (prev?.getTracks() || []).map(track => [track.id, track]),
+          );
+          event.streams?.[0]?.getTracks().forEach(track => tracksById.set(track.id, track));
+          tracksById.set(event.track.id, event.track);
+          return new MediaStream([...tracksById.values()]);
         });
 
-        event.track.onended = () => {
-          setRemoteScreenStream(current => (
-            current?.getTracks().some(track => track.id === event.track.id) ? null : current
-          ));
-          setRemoteScreenSharing(false);
-        };
+        if (isScreen) {
+          event.track.onended = () => {
+            setRemoteScreenStream(current => (
+              current?.getTracks().some(track => track.id === event.track.id) ? null : current
+            ));
+            setRemoteScreenSharing(false);
+            setRemoteShareSource(null);
+          };
+        } else {
+          event.track.onended = () => {
+            setRemoteScreenStream(current => {
+              if (!current) return current;
+              const remainingTracks = current.getTracks().filter(track => track.id !== event.track.id);
+              return remainingTracks.length ? new MediaStream(remainingTracks) : null;
+            });
+          };
+        }
       }
     };
 
     pc.ondatachannel = (event) => {
+      if (pcRef.current !== pc) return;
       configureDataChannel(event.channel);
     };
 
     pc.onconnectionstatechange = () => {
+      if (pcRef.current !== pc) return;
       console.log("[WebRTC] Connection state changed:", pc.connectionState);
       if (pc.connectionState === 'connected') {
+        if (disconnectRecoveryTimerRef.current) {
+          window.clearTimeout(disconnectRecoveryTimerRef.current);
+          disconnectRecoveryTimerRef.current = null;
+        }
+        iceRestartInFlightRef.current = false;
         setConnected(true);
         setPeerPresence('connected');
       } else if (pc.connectionState === 'disconnected') {
+        setPeerPresence('reconnecting');
+        if (!disconnectRecoveryTimerRef.current) {
+          disconnectRecoveryTimerRef.current = window.setTimeout(() => {
+            disconnectRecoveryTimerRef.current = null;
+            if (pcRef.current !== pc || pc.connectionState !== 'disconnected') return;
+            setConnected(false);
+            if (isCallerRef.current) {
+              restartIceRef.current?.();
+            } else {
+              const socket = signalingSocketRef.current;
+              if (socket?.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'ice-restart-request' }));
+              }
+            }
+          }, 3000);
+        }
+      } else if (pc.connectionState === 'failed') {
         setConnected(false);
         setPeerPresence('reconnecting');
-      } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-        setConnected(false);
-        setRemoteScreenSharing(false);
-        setRemoteScreenStream(null);
+        if (isCallerRef.current) {
+          restartIceRef.current?.();
+        } else {
+          const socket = signalingSocketRef.current;
+          if (socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ice-restart-request' }));
+          }
+        }
       }
     };
     
     pc.oniceconnectionstatechange = () => {
+      if (pcRef.current !== pc) return;
       console.log("[WebRTC] ICE Connection state:", pc.iceConnectionState);
     };
 
@@ -430,6 +646,9 @@ export const WebRTCProvider = ({ children }) => {
         : localStreamRef.current?.getAudioTracks()[0];
       const videoTrack = localStreamRef.current?.getVideoTracks()[0];
       const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
+      const contentAudioTrack = localContentAudioTrackRef.current?.readyState === 'live'
+        ? localContentAudioTrackRef.current
+        : null;
 
       if (audioTrack) {
         audioTransceiverRef.current = pc.addTransceiver(audioTrack, { direction: 'sendrecv' });
@@ -444,10 +663,23 @@ export const WebRTCProvider = ({ children }) => {
       }
 
       const outgoingScreenTrack = screenTrack || createEmptyVideoTrack();
+      const outgoingContentAudioTrack = contentAudioTrack || createEmptyAudioTrack();
       if (!screenTrack) screenPlaceholderTrackRef.current = outgoingScreenTrack;
+      if (!contentAudioTrack) contentAudioPlaceholderTrackRef.current = outgoingContentAudioTrack;
+      const contentTracks = [outgoingScreenTrack, outgoingContentAudioTrack].filter(Boolean);
+      contentAssociationStreamRef.current = new MediaStream(contentTracks);
       screenTransceiverRef.current = outgoingScreenTrack
-        ? pc.addTransceiver(outgoingScreenTrack, { direction: 'sendrecv' })
+        ? pc.addTransceiver(outgoingScreenTrack, {
+            direction: 'sendrecv',
+            streams: [contentAssociationStreamRef.current],
+          })
         : pc.addTransceiver('video', { direction: 'sendrecv' });
+      contentAudioTransceiverRef.current = outgoingContentAudioTrack
+        ? pc.addTransceiver(outgoingContentAudioTrack, {
+            direction: 'sendrecv',
+            streams: [contentAssociationStreamRef.current],
+          })
+        : pc.addTransceiver('audio', { direction: 'sendrecv' });
     }
   };
   initPeerConnectionRef.current = initPeerConnection;
@@ -456,6 +688,9 @@ export const WebRTCProvider = ({ children }) => {
     const normalizedRoomId = id.trim().toUpperCase();
     setRoomError(null);
     setPeerPresence('waiting');
+    setParticipantVolume(DEFAULT_PLAYBACK_VOLUMES.participant);
+    setScreenVolume(DEFAULT_PLAYBACK_VOLUMES.screen);
+    setMovieVolume(DEFAULT_PLAYBACK_VOLUMES.movie);
     setRoomId(normalizedRoomId);
   };
 
@@ -463,15 +698,50 @@ export const WebRTCProvider = ({ children }) => {
     console.log("[WebRTC] Starting call...");
     initPeerConnection(true);
 
-    const dc = pcRef.current.createDataChannel('chat');
+    const pc = pcRef.current;
+    const socket = signalingSocketRef.current;
+    if (!pc || socket?.readyState !== WebSocket.OPEN) {
+      throw new Error('The signaling connection is not ready.');
+    }
+
+    const dc = pc.createDataChannel('chat');
     configureDataChannel(dc);
 
-    const offer = await pcRef.current.createOffer();
-    await pcRef.current.setLocalDescription(offer);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (pcRef.current !== pc || signalingSocketRef.current !== socket) return;
     console.log("[Signaling] Sending offer");
-    ws.send(JSON.stringify(pcRef.current.localDescription));
+    socket.send(JSON.stringify(pc.localDescription));
   };
   startCallRef.current = startCall;
+
+  const restartIce = async () => {
+    const pc = pcRef.current;
+    const socket = signalingSocketRef.current;
+    if (
+      !pc
+      || !isCallerRef.current
+      || iceRestartInFlightRef.current
+      || pc.signalingState !== 'stable'
+      || socket?.readyState !== WebSocket.OPEN
+    ) return;
+
+    iceRestartInFlightRef.current = true;
+    try {
+      pc.restartIce();
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      if (pcRef.current !== pc || signalingSocketRef.current !== socket) {
+        iceRestartInFlightRef.current = false;
+        return;
+      }
+      socket.send(JSON.stringify({ ...pc.localDescription.toJSON(), iceRestart: true }));
+    } catch (error) {
+      iceRestartInFlightRef.current = false;
+      if (pcRef.current === pc) console.error('[WebRTC] ICE restart failed:', error);
+    }
+  };
+  restartIceRef.current = restartIce;
 
   const sendMessage = (text) => {
     if (text.length <= 2000 && dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
@@ -494,24 +764,34 @@ export const WebRTCProvider = ({ children }) => {
     resetRemotePeer();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     localScreenStreamRef.current?.getTracks().forEach(track => track.stop());
+    const contentAudioTrack = localContentAudioTrackRef.current;
+    const contentAudioOwnedByShare = localScreenStreamRef.current
+      ?.getTracks()
+      .some(track => track.id === contentAudioTrack?.id);
+    if (contentAudioTrack && !contentAudioOwnedByShare) contentAudioTrack.stop();
     localStreamRef.current = null;
     localScreenStreamRef.current = null;
+    localContentAudioTrackRef.current = null;
     outgoingAudioTrackRef.current = null;
     setLocalStreamState(null);
     setLocalScreenStreamState(null);
     setIsScreenSharing(false);
+    setLocalShareSource(null);
     setChatMessages([]);
     setUnreadCount(0);
     setIsChatOpen(false);
     setIsPresentationMode(false);
     setPeerPresence('waiting');
+    setParticipantVolume(DEFAULT_PLAYBACK_VOLUMES.participant);
+    setScreenVolume(DEFAULT_PLAYBACK_VOLUMES.screen);
+    setMovieVolume(DEFAULT_PLAYBACK_VOLUMES.movie);
     notificationAudioContextRef.current?.close().catch(() => {});
     notificationAudioContextRef.current = null;
   };
 
   const getSender = (kind, isScreen = false) => {
     if (!pcRef.current) return null;
-    if (!audioTransceiverRef.current || !cameraTransceiverRef.current || !screenTransceiverRef.current) {
+    if (!audioTransceiverRef.current || !cameraTransceiverRef.current || !screenTransceiverRef.current || !contentAudioTransceiverRef.current) {
       bindTransceivers(pcRef.current);
     }
 
@@ -526,28 +806,60 @@ export const WebRTCProvider = ({ children }) => {
     setLocalStreamState(stream);
 
     const replacements = [];
+    const microphoneTrack = stream.getAudioTracks()[0] || null;
+    let nextAudioTrack = microphoneTrack;
+    if (!nextAudioTrack) {
+      const reusablePlaceholder = audioPlaceholderTrackRef.current?.readyState === 'live'
+        ? audioPlaceholderTrackRef.current
+        : createEmptyAudioTrack();
+      audioPlaceholderTrackRef.current = reusablePlaceholder;
+      nextAudioTrack = reusablePlaceholder;
+    }
+    outgoingAudioTrackRef.current = nextAudioTrack;
+
     if (pcRef.current) {
-      stream.getTracks().forEach(track => {
-        if (track.kind === 'audio' && isScreenSharingRef.current) return;
-        const sender = getSender(track.kind, false);
-        if (track.kind === 'audio') outgoingAudioTrackRef.current = track;
-        if (sender) replacements.push(sender.replaceTrack(track));
-      });
-    } else if (!isScreenSharingRef.current) {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) outgoingAudioTrackRef.current = audioTrack;
+      const audioSender = getSender('audio');
+      const videoTrack = stream.getVideoTracks()[0] || null;
+      const videoSender = getSender('video', false);
+      if (audioSender && nextAudioTrack) replacements.push(audioSender.replaceTrack(nextAudioTrack));
+      if (videoSender && videoTrack) replacements.push(videoSender.replaceTrack(videoTrack));
     }
 
-    return Promise.all(replacements).catch(error => {
-      console.warn('Failed to update a camera or microphone sender', error);
-      throw error;
-    });
+    return Promise.all(replacements)
+      .then(() => {
+        if (microphoneTrack && audioPlaceholderTrackRef.current) {
+          audioPlaceholderTrackRef.current.stop();
+          audioPlaceholderTrackRef.current = null;
+        }
+      })
+      .catch(error => {
+        console.warn('Failed to update a camera or microphone sender', error);
+        throw error;
+      });
   };
 
   const setOutgoingAudioTrack = async (track) => {
     outgoingAudioTrackRef.current = track;
     const sender = getSender('audio');
     if (sender) await sender.replaceTrack(track);
+  };
+
+  const setSharedContentAudioTrack = async (track) => {
+    localContentAudioTrackRef.current = track;
+    if (!pcRef.current) return;
+
+    if (!contentAudioTransceiverRef.current) bindTransceivers(pcRef.current);
+    const sender = contentAudioTransceiverRef.current?.sender;
+    if (!sender) throw new Error('The shared-content audio sender is not ready.');
+
+    const outgoingTrack = track || createEmptyAudioTrack();
+    if (!outgoingTrack) throw new Error('Unable to keep the shared-content audio sender active.');
+    await sender.replaceTrack(outgoingTrack);
+
+    if (contentAudioPlaceholderTrackRef.current && contentAudioPlaceholderTrackRef.current !== outgoingTrack) {
+      contentAudioPlaceholderTrackRef.current.stop();
+    }
+    contentAudioPlaceholderTrackRef.current = track ? null : outgoingTrack;
   };
 
   const setScreenStream = async (stream) => {
@@ -622,6 +934,7 @@ export const WebRTCProvider = ({ children }) => {
       sendControlMessage,
       setCameraStream,
       setOutgoingAudioTrack,
+      setSharedContentAudioTrack,
       setScreenStream,
       getSender,
       connected,
@@ -634,6 +947,15 @@ export const WebRTCProvider = ({ children }) => {
       remoteMirrored,
       remoteCameraOff,
       remoteScreenSharing,
+      localShareSource,
+      setLocalShareSource,
+      remoteShareSource,
+      participantVolume,
+      setParticipantVolume,
+      screenVolume,
+      setScreenVolume,
+      movieVolume,
+      setMovieVolume,
       peerPresence,
       connectionStats,
       roomId,
