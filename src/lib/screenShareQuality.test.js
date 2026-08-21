@@ -4,8 +4,21 @@ import {
   advanceAutoQuality,
   createAutoQualityState,
   getAutoQualityPreset,
+  getTrackQualityConstraints,
   summarizeScreenSenderStats,
 } from './screenShareQuality.js';
+
+test('keeps movie capture at its native aspect ratio while constraining other shares', () => {
+  const preset = { width: 1280, height: 720, frameRate: 30 };
+  assert.deepEqual(getTrackQualityConstraints(preset, 'movie'), {
+    frameRate: { ideal: 30, max: 30 },
+  });
+  assert.deepEqual(getTrackQualityConstraints(preset, 'motion'), {
+    width: { ideal: 1280, max: 1280 },
+    height: { ideal: 720, max: 720 },
+    frameRate: { ideal: 30, max: 30 },
+  });
+});
 
 test('downgrades only after sustained encoder pressure', () => {
   let state = createAutoQualityState(1);

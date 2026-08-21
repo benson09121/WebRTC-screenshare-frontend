@@ -5,7 +5,7 @@ const SCREEN_VIEW_MODE_SET = new Set(SCREEN_VIEW_MODES);
 const SCREEN_VIDEO_LAYOUTS = Object.freeze({
   fit: Object.freeze({
     viewportClassName: 'overflow-hidden',
-    surfaceClassName: 'h-full w-full',
+    surfaceClassName: 'flex h-full w-full items-center justify-center',
     videoClassName: 'h-full w-full object-contain',
   }),
   fill: Object.freeze({
@@ -31,3 +31,24 @@ export const getScreenVideoLayout = mode => (
 export const getNextScreenViewMode = (mode, isScreenView) => (
   isScreenView ? normalizeScreenViewMode(mode) : 'fit'
 );
+
+export const getContainedMediaSize = (
+  containerWidth,
+  containerHeight,
+  aspectRatio,
+) => {
+  if (
+    !Number.isFinite(containerWidth)
+    || !Number.isFinite(containerHeight)
+    || !Number.isFinite(aspectRatio)
+    || containerWidth <= 0
+    || containerHeight <= 0
+    || aspectRatio <= 0
+  ) return null;
+
+  const containerAspectRatio = containerWidth / containerHeight;
+  if (containerAspectRatio > aspectRatio) {
+    return { width: containerHeight * aspectRatio, height: containerHeight };
+  }
+  return { width: containerWidth, height: containerWidth / aspectRatio };
+};

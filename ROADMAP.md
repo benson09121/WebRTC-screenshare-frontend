@@ -118,19 +118,40 @@ References: [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/), [ICE resta
 ## Now — Watch Together
 
 - [x] Let either participant choose a local movie without uploading it to PairBeam or storing it in a database.
-- [x] Support direct browser-playable media URLs without sending the URL to signaling or the other participant.
-- [x] Validate direct links, require HTTP(S), reject known video-page providers, enforce a load timeout, and explain media CORS requirements.
+- [x] Support direct browser-playable media URLs without sending the URL through signaling or storing it in PairBeam.
+- [x] Validate direct links, require HTTP(S), reject known video-page providers, and enforce a load timeout.
+- [x] Try one-download host capture/WebRTC relay when media CORS permits it; otherwise fall back to synchronized direct playback where the exact URL is sent over the encrypted peer data channel and both participants fetch it.
+- [x] Reject direct URLs containing embedded usernames or passwords, and disclose that query-string tokens are shared with the participant in synchronized direct mode.
+- [ ] Add a viewer-side Accept/Decline confirmation before the browser requests a peer-supplied synchronized direct URL.
 - [x] Capture a compatible local `<video>` player and send its video and audio through the negotiated shared-content transceivers.
 - [x] Add source-aware “Your movie” and “Their movie” views while retaining simultaneous two-way source selection.
 - [x] Add host play, pause, seek, progress, stop, and automatic end-of-movie cleanup.
 - [x] Use a 24/30fps adaptive movie profile instead of spending bandwidth encoding film content at 60fps.
 - [x] Keep participant microphone playback independent from the selected shared-content audio.
 - [x] Feature-detect media-element capture and explain the Chrome/Firefox or tab-sharing fallback when unavailable.
+- [x] Wait for the first decoded frame and asynchronously added `captureStream()` tracks before starting a movie share.
+- [x] Add a visible shared-movie player for the host and viewer instead of showing controls only to the host.
+- [x] Allow either participant to play, pause, seek, toggle subtitles, and request an exposed audio-track change over the encrypted data channel.
+- [x] Parse an external `.srt` file locally and synchronize only the active subtitle cue; do not upload or persist the subtitle file.
+- [x] Detect and switch native audio tracks when the browser exposes `HTMLMediaElement.audioTracks`.
+- [x] Preserve a movie's native display aspect ratio through capture, WebRTC downscaling, Fit mode, and fullscreen; use a true-black shared-content stage for correct letterboxing.
 - [ ] Add an invitation with Accept/Decline before the host begins sending a movie.
 - [x] Add independent local receiver-volume controls for participant voice, shared-screen audio, and shared-movie audio.
 - [ ] Add a “we both have this file” mode that fingerprints local files and synchronizes controls without sending movie media.
 - [ ] Research chunked RTCDataChannel + Media Source Extensions transfer only if one-copy, original-quality buffered playback becomes a product requirement.
 - [ ] Add Playwright coverage with mocked media-element capture plus two-device Chrome and Firefox compatibility testing.
+
+### Player and MKV investigation
+
+- Vidstack is the preferred mature React player layer for browser-compatible media. It supports MediaStream sources, accessible controls, and external VTT/SRT/SSA captions, but its local audio-track API still depends on the underlying provider/browser and it does not add arbitrary MKV codec decoding.
+- Shaka Player is optimized for DASH/HLS and browser-supported MP4/WebM. It supports UTF-8 SRT, WebVTT, TTML, and adaptive-stream audio tracks, but is not a general local MKV decoder.
+- Experimental WebCodecs/WASM engines such as Movi Player can demux MKV and expose multiple audio/subtitle tracks, but add roughly 2–3 MB compressed plus significant decoding load. Their canvas/Web Audio output must be integrated into a capturable `MediaStream` before PairBeam can reliably send it to the peer.
+- [ ] Prototype a lazily loaded WebCodecs/WASM MKV engine behind capability detection, including canvas capture, Web Audio capture, track switching, cancellation, memory limits, and fallback when a codec cannot be decoded.
+- [ ] Extract text-based embedded MKV subtitle tracks (SRT/SSA/ASS) in that engine and render the selected cue in PairBeam; image-based PGS/VobSub subtitles require a separate renderer.
+- [ ] Benchmark a 1080p HEVC MKV on low-, mid-, and high-tier devices while simultaneously encoding WebRTC video before enabling the fallback in production.
+- Until that prototype passes the workload tests, a UI player library alone must not claim that an MKV is playable. Browser-compatible MP4 (H.264/AAC) and WebM remain the supported sharing inputs.
+
+Research: [Vidstack player features](https://vidstack.io/docs/player/), [Vidstack source and track support](https://vidstack.io/docs/player/core-concepts/loading/), [Shaka container/subtitle support](https://github.com/shaka-project/shaka-player/blob/main/README.md#media-container-and-subtitle-support), and [WebCodecs](https://github.com/w3c/webcodecs).
 
 ## Requested focus — chatbox and fullscreen experience
 
@@ -142,10 +163,17 @@ References: [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/), [ICE resta
 - [x] Support keyboard-first chat: focus management, Enter-to-send, Shift+Enter for a newline, Escape to close, and live announcements for new messages.
 - [x] Keep message history in memory only and clear it when the room ends, reloads, or the participant leaves.
 - [x] Replace the create-room sparkle/emoji treatment with a restrained product mark that matches the call UI.
+- [x] Replace the oversized global settings panel with Discord-style arrow menus beside microphone, camera, and screen-share controls; keep each menu scoped to that media source.
+- [x] Put participant voice volume in microphone settings, shared-screen volume in screen settings, and shared-movie volume directly beside the movie timeline.
+- [x] Keep fullscreen and presentation controls idle while the pointer or keyboard is being used inside the open chat panel.
 
 ## Later — collaboration without storage
 
-- [ ] Add ephemeral reactions and a raised-hand signal over the data channel.
+- [ ] Add a compact reaction button to the call controls with a small curated emoji tray; send reactions as validated ephemeral data-channel events and expire the stage animation locally.
+- [ ] Add an emoji picker beside the chat composer that inserts Unicode into the existing text draft without changing the signaling protocol or storing picker history.
+- [ ] Add GIF search and sending as a structured `chat-gif` event using HTTPS provider/CDN URLs, bounded alt text, an allowlisted host policy, lazy-loaded previews, and a clear third-party privacy notice; do not proxy or persist GIFs in PairBeam.
+- [ ] Add a raised-hand signal over the data channel with a persistent indicator until lowered or the participant leaves.
+- [ ] Test reaction expiry, reduced-motion rendering, emoji keyboard navigation, invalid GIF payload rejection, and GIF provider/network failure states.
 - [ ] Add a laser pointer and temporary annotations sent as data-channel events; do not persist them.
 - [ ] Add clipboard-safe room invite status and Web Share API support on mobile.
 - [ ] Add optional end-to-end call diagnostics export generated locally as JSON.

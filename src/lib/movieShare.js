@@ -27,6 +27,10 @@ export const normalizeDirectMediaUrl = (value) => {
     throw new Error('Enter a valid http(s) video URL.');
   }
 
+  if (url.username || url.password) {
+    throw new Error('Links containing a username or password are not supported. Use a credential-free or time-limited signed URL.');
+  }
+
   const hostname = url.hostname.toLowerCase();
   const isKnownVideoPage = UNSUPPORTED_PAGE_HOSTS.some(host => (
     hostname === host || hostname.endsWith(`.${host}`)
@@ -36,6 +40,15 @@ export const normalizeDirectMediaUrl = (value) => {
   }
 
   return url.href;
+};
+
+export const sanitizeSharedDirectMediaUrl = value => {
+  if (typeof value !== 'string' || value.length > 4096) return null;
+  try {
+    return normalizeDirectMediaUrl(value);
+  } catch {
+    return null;
+  }
 };
 
 export const getDirectMediaDisplayName = (value) => {
@@ -58,6 +71,15 @@ export const formatMediaTime = (seconds) => {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
   }
   return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+export const getMovieVideoGeometry = mediaElement => {
+  const width = Number(mediaElement?.videoWidth);
+  const height = Number(mediaElement?.videoHeight);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { width: null, height: null, aspectRatio: null };
+  }
+  return { width, height, aspectRatio: width / height };
 };
 
 export const getCaptureStream = (mediaElement) => {
@@ -97,3 +119,194 @@ export const waitForMovieMetadata = (
   mediaElement.addEventListener('error', handleError, { once: true });
   timeoutId = globalThis.setTimeout(handleError, timeoutMs);
 });
+
+export const waitForMovieFrame = (
+  mediaElement,
+  {
+    timeoutMs = 10000,
+    errorMessage = 'The browser could not decode a video frame from this movie. Try MP4 (H.264/AAC) or WebM.',
+  } = {},
+) => new Promise((resolve, reject) => {
+  const hasDecodedFrame = () => (
+    mediaElement.readyState >= 2
+    && mediaElement.videoWidth > 0
+    && mediaElement.videoHeight > 0
+  );
+  if (hasDecodedFrame()) {
+    resolve();
+    return;
+  }
+
+  let timeoutId;
+  const cleanup = () => {
+    globalThis.clearTimeout(timeoutId);
+    mediaElement.removeEventListener('loadeddata', handleReady);
+    mediaElement.removeEventListener('canplay', handleReady);
+    mediaElement.removeEventListener('error', handleError);
+  };
+  const handleReady = () => {
+    if (!hasDecodedFrame()) return;
+    cleanup();
+    resolve();
+  };
+  const handleError = () => {
+    cleanup();
+    reject(new Error(errorMessage));
+  };
+
+  mediaElement.addEventListener('loadeddata', handleReady);
+  mediaElement.addEventListener('canplay', handleReady);
+  mediaElement.addEventListener('error', handleError, { once: true });
+  timeoutId = globalThis.setTimeout(handleError, timeoutMs);
+});
+
+export const waitForCapturedTrack = (
+  stream,
+  kind,
+  { timeoutMs = 4000 } = {},
+) => new Promise((resolve, reject) => {
+  const getTrack = () => stream
+    ?.getTracks()
+    .find(track => track.kind === kind && track.readyState !== 'ended');
+  const existingTrack = getTrack();
+  if (existingTrack) {
+    resolve(existingTrack);
+    return;
+  }
+
+  let timeoutId;
+  let pollId;
+  let settled = false;
+  const cleanup = () => {
+    globalThis.clearTimeout(timeoutId);
+    globalThis.clearInterval(pollId);
+    stream?.removeEventListener?.('addtrack', handleAddTrack);
+  };
+  const resolveTrack = track => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    resolve(track);
+  };
+  const handleAddTrack = event => {
+    if (event.track?.kind === kind && event.track.readyState !== 'ended') {
+      resolveTrack(event.track);
+    }
+  };
+  const checkForTrack = () => {
+    const track = getTrack();
+    if (track) resolveTrack(track);
+  };
+
+  stream?.addEventListener?.('addtrack', handleAddTrack);
+  pollId = globalThis.setInterval(checkForTrack, 50);
+  timeoutId = globalThis.setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    reject(new Error(`The browser did not expose a captured ${kind} track.`));
+  }, timeoutMs);
+  // Recheck after subscribing to close the gap between the first lookup and listener.
+  checkForTrack();
+});
+
+const parseSubtitleTimestamp = value => {
+  const match = value.trim().match(/^(?:(\d{1,2}):)?(\d{2}):(\d{2})[,.](\d{3})$/);
+  if (!match) return null;
+  const [, hours = '0', minutes, seconds, milliseconds] = match;
+  return Number(hours) * 3600
+    + Number(minutes) * 60
+    + Number(seconds)
+    + Number(milliseconds) / 1000;
+};
+
+export const parseSrt = (value = '') => {
+  const normalized = value.replace(/^\uFEFF/, '').replace(/\r/g, '').trim();
+  if (!normalized) return [];
+
+  const cues = [];
+  for (const block of normalized.split(/\n{2,}/)) {
+    const lines = block.split('\n');
+    if (/^\d+$/.test(lines[0]?.trim())) lines.shift();
+    const timingLine = lines.shift() || '';
+    const timingMatch = timingLine.match(/^(.+?)\s+-->\s+(.+?)(?:\s+.*)?$/);
+    if (!timingMatch) continue;
+    const startTime = parseSubtitleTimestamp(timingMatch[1]);
+    const endTime = parseSubtitleTimestamp(timingMatch[2]);
+    const text = lines.join('\n').trim();
+    if (startTime == null || endTime == null || endTime <= startTime || !text) continue;
+    cues.push({ startTime, endTime, text });
+  }
+
+  return cues.sort((first, second) => first.startTime - second.startTime);
+};
+
+export const getActiveSubtitleText = (cues, currentTime) => {
+  if (!Array.isArray(cues) || !Number.isFinite(currentTime)) return '';
+
+  let low = 0;
+  let high = cues.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const cue = cues[middle];
+    if (currentTime < cue.startTime) {
+      high = middle - 1;
+    } else if (currentTime >= cue.endTime) {
+      low = middle + 1;
+    } else {
+      return cue.text;
+    }
+  }
+  return '';
+};
+
+export const getNativeAudioTrackOptions = mediaElement => {
+  const tracks = Array.from(mediaElement?.audioTracks || []);
+  return tracks.map((track, index) => ({
+    index,
+    label: track.label || track.language || `Audio ${index + 1}`,
+    language: track.language || null,
+    enabled: Boolean(track.enabled),
+  }));
+};
+
+export const selectNativeAudioTrack = (mediaElement, selectedIndex) => {
+  const tracks = Array.from(mediaElement?.audioTracks || []);
+  if (!tracks.length || selectedIndex < 0 || selectedIndex >= tracks.length) return false;
+  tracks.forEach((track, index) => {
+    track.enabled = index === selectedIndex;
+  });
+  return true;
+};
+
+export const getNativeSubtitleTrackOptions = mediaElement => Array
+  .from(mediaElement?.textTracks || [])
+  .map((track, index) => ({ track, index }))
+  .filter(({ track }) => track.kind === 'subtitles' || track.kind === 'captions')
+  .map(({ track, index }) => ({
+    index,
+    label: track.label || track.language || `Subtitles ${index + 1}`,
+    language: track.language || null,
+    active: track.mode === 'showing' || track.mode === 'hidden',
+  }));
+
+export const selectNativeSubtitleTrack = (mediaElement, selectedIndex, enabled = true) => {
+  const tracks = Array.from(mediaElement?.textTracks || []);
+  let selected = false;
+  tracks.forEach((track, index) => {
+    if (track.kind !== 'subtitles' && track.kind !== 'captions') return;
+    const shouldSelect = enabled && index === selectedIndex;
+    track.mode = shouldSelect ? 'hidden' : 'disabled';
+    if (shouldSelect) selected = true;
+  });
+  return selected;
+};
+
+export const getActiveNativeSubtitleText = (mediaElement, selectedIndex) => {
+  const track = Array.from(mediaElement?.textTracks || [])[selectedIndex];
+  if (!track?.activeCues) return '';
+  return Array.from(track.activeCues)
+    .map(cue => cue.text || '')
+    .filter(Boolean)
+    .join('\n');
+};

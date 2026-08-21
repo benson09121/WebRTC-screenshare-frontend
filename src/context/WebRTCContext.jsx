@@ -3,6 +3,7 @@ import { useSignaling } from '../hooks/useSignaling';
 import { EMPTY_CONNECTION_STATS, summarizeWebRTCStats } from '../lib/webrtcStats';
 import { createEmptyAudioTrack, createEmptyVideoTrack } from '../lib/mediaTracks';
 import { DEFAULT_PLAYBACK_VOLUMES, normalizePlaybackVolume } from '../lib/playbackVolume';
+import { sanitizeSharedDirectMediaUrl } from '../lib/movieShare';
 import { WebRTCContext } from './useWebRTC';
 
 const getIceServers = () => {
@@ -81,6 +82,7 @@ export const WebRTCProvider = ({ children }) => {
   const [roomError, setRoomError] = useState(null);
   const [peerPresence, setPeerPresence] = useState('waiting');
   const [connectionStats, setConnectionStats] = useState(EMPTY_CONNECTION_STATS);
+  const [movieControlRequest, setMovieControlRequest] = useState(null);
   const [participantVolume, setParticipantVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.participant);
   const [screenVolume, setScreenVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.screen);
   const [movieVolume, setMovieVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.movie);
@@ -268,8 +270,34 @@ export const WebRTCProvider = ({ children }) => {
               kind: data.source === 'movie' ? 'movie' : 'screen',
               name: typeof data.name === 'string' ? data.name.slice(0, 160) : null,
               duration: Number.isFinite(data.duration) ? data.duration : null,
+              deliveryMode: data.deliveryMode === 'direct' ? 'direct' : 'relay',
+              url: data.deliveryMode === 'direct' ? sanitizeSharedDirectMediaUrl(data.url) : null,
+              width: Number.isFinite(data.width) && data.width > 0 ? data.width : null,
+              height: Number.isFinite(data.height) && data.height > 0 ? data.height : null,
+              aspectRatio: Number.isFinite(data.aspectRatio) && data.aspectRatio > 0
+                ? data.aspectRatio
+                : null,
               isPlaying: data.isPlaying !== false,
               currentTime: Number.isFinite(data.currentTime) ? data.currentTime : 0,
+              subtitleText: typeof data.subtitleText === 'string' ? data.subtitleText.slice(0, 1000) : '',
+              subtitlesAvailable: Boolean(data.subtitlesAvailable),
+              subtitlesEnabled: data.subtitlesEnabled !== false,
+              subtitleTracks: Array.isArray(data.subtitleTracks)
+                ? data.subtitleTracks.slice(0, 16).map((track, index) => ({
+                    index: Number.isInteger(track?.index) ? track.index : index,
+                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Subtitles ${index + 1}`,
+                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
+                  }))
+                : [],
+              selectedSubtitleTrack: Number.isInteger(data.selectedSubtitleTrack) ? data.selectedSubtitleTrack : null,
+              audioTracks: Array.isArray(data.audioTracks)
+                ? data.audioTracks.slice(0, 16).map((track, index) => ({
+                    index: Number.isInteger(track?.index) ? track.index : index,
+                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Audio ${index + 1}`,
+                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
+                  }))
+                : [],
+              selectedAudioTrack: Number.isInteger(data.selectedAudioTrack) ? data.selectedAudioTrack : 0,
             }
           : null);
         return;
@@ -281,8 +309,44 @@ export const WebRTCProvider = ({ children }) => {
               isPlaying: typeof data.isPlaying === 'boolean' ? data.isPlaying : current.isPlaying,
               currentTime: Number.isFinite(data.currentTime) ? data.currentTime : current.currentTime,
               duration: Number.isFinite(data.duration) ? data.duration : current.duration,
+              subtitleText: typeof data.subtitleText === 'string' ? data.subtitleText.slice(0, 1000) : current.subtitleText,
+              subtitlesAvailable: typeof data.subtitlesAvailable === 'boolean' ? data.subtitlesAvailable : current.subtitlesAvailable,
+              subtitlesEnabled: typeof data.subtitlesEnabled === 'boolean' ? data.subtitlesEnabled : current.subtitlesEnabled,
+              subtitleTracks: Array.isArray(data.subtitleTracks)
+                ? data.subtitleTracks.slice(0, 16).map((track, index) => ({
+                    index: Number.isInteger(track?.index) ? track.index : index,
+                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Subtitles ${index + 1}`,
+                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
+                  }))
+                : current.subtitleTracks,
+              selectedSubtitleTrack: Number.isInteger(data.selectedSubtitleTrack)
+                ? data.selectedSubtitleTrack
+                : current.selectedSubtitleTrack,
+              audioTracks: Array.isArray(data.audioTracks)
+                ? data.audioTracks.slice(0, 16).map((track, index) => ({
+                    index: Number.isInteger(track?.index) ? track.index : index,
+                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Audio ${index + 1}`,
+                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
+                  }))
+                : current.audioTracks,
+              selectedAudioTrack: Number.isInteger(data.selectedAudioTrack)
+                ? data.selectedAudioTrack
+                : current.selectedAudioTrack,
             }
           : current);
+        return;
+      }
+      if (
+        data.type === 'movie-control-request'
+        && ['play', 'pause', 'seek', 'audio-track', 'subtitle-track', 'subtitles'].includes(data.action)
+      ) {
+        setMovieControlRequest({
+          id: `${Date.now()}-${messageSequenceRef.current++}`,
+          action: data.action,
+          currentTime: Number.isFinite(data.currentTime) ? Math.max(0, data.currentTime) : null,
+          trackIndex: Number.isInteger(data.trackIndex) ? data.trackIndex : null,
+          enabled: typeof data.enabled === 'boolean' ? data.enabled : null,
+        });
         return;
       }
       if (data.type === 'chat' && typeof data.text === 'string' && data.text.length <= 2000) {
@@ -308,8 +372,22 @@ export const WebRTCProvider = ({ children }) => {
         source: localShareSourceRef.current?.kind || 'screen',
         name: localShareSourceRef.current?.name || null,
         duration: localShareSourceRef.current?.duration || null,
+        deliveryMode: localShareSourceRef.current?.deliveryMode || 'relay',
+        url: localShareSourceRef.current?.deliveryMode === 'direct'
+          ? localShareSourceRef.current?.url || null
+          : null,
+        width: localShareSourceRef.current?.width || null,
+        height: localShareSourceRef.current?.height || null,
+        aspectRatio: localShareSourceRef.current?.aspectRatio || null,
         isPlaying: localShareSourceRef.current?.isPlaying !== false,
         currentTime: localShareSourceRef.current?.currentTime || 0,
+        subtitleText: localShareSourceRef.current?.subtitleText || '',
+        subtitlesAvailable: Boolean(localShareSourceRef.current?.subtitlesAvailable),
+        subtitlesEnabled: localShareSourceRef.current?.subtitlesEnabled !== false,
+        subtitleTracks: localShareSourceRef.current?.subtitleTracks || [],
+        selectedSubtitleTrack: localShareSourceRef.current?.selectedSubtitleTrack ?? null,
+        audioTracks: localShareSourceRef.current?.audioTracks || [],
+        selectedAudioTrack: localShareSourceRef.current?.selectedAudioTrack || 0,
       }));
     };
 
@@ -760,6 +838,33 @@ export const WebRTCProvider = ({ children }) => {
     }
   };
 
+  const requestMovieControl = useCallback((owner, command) => {
+    if (!command || !['play', 'pause', 'seek', 'audio-track', 'subtitle-track', 'subtitles'].includes(command.action)) {
+      return false;
+    }
+    const normalizedCommand = {
+      action: command.action,
+      currentTime: Number.isFinite(command.currentTime) ? Math.max(0, command.currentTime) : null,
+      trackIndex: Number.isInteger(command.trackIndex) ? command.trackIndex : null,
+      enabled: typeof command.enabled === 'boolean' ? command.enabled : null,
+    };
+    if (owner === 'local') {
+      setMovieControlRequest({
+        id: `${Date.now()}-${messageSequenceRef.current++}`,
+        ...normalizedCommand,
+      });
+      return true;
+    }
+    if (owner === 'remote' && dataChannelRef.current?.readyState === 'open') {
+      dataChannelRef.current.send(JSON.stringify({
+        type: 'movie-control-request',
+        ...normalizedCommand,
+      }));
+      return true;
+    }
+    return false;
+  }, []);
+
   const endCall = () => {
     resetRemotePeer();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -932,6 +1037,8 @@ export const WebRTCProvider = ({ children }) => {
       endCall,
       sendMessage,
       sendControlMessage,
+      requestMovieControl,
+      movieControlRequest,
       setCameraStream,
       setOutgoingAudioTrack,
       setSharedContentAudioTrack,

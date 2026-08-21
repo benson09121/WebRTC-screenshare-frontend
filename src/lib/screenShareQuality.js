@@ -19,6 +19,25 @@ export const AUTO_QUALITY_PROFILES = Object.freeze({
   ]),
 });
 
+export const getTrackQualityConstraints = (preset, contentType) => {
+  if (!preset) return null;
+
+  const frameRate = {
+    ideal: preset.frameRate,
+    max: preset.frameRate,
+  };
+
+  // A movie's natural dimensions can include a non-16:9 display aspect ratio.
+  // Keep that geometry intact and let RTCRtpSender scale it uniformly instead.
+  if (preset.lossless || contentType === 'movie') return { frameRate };
+
+  return {
+    width: { ideal: preset.width, max: preset.width },
+    height: { ideal: preset.height, max: preset.height },
+    frameRate,
+  };
+};
+
 export const AUTO_QUALITY_START_INDEX = 1;
 
 export const getAutoQualityPreset = (contentType, index) => {

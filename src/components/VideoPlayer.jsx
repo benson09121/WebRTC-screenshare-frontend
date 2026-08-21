@@ -17,9 +17,14 @@ import {
 } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
 import { getNextSelectedView } from '../lib/viewSelection';
-import { getNextScreenViewMode, getScreenVideoLayout } from '../lib/screenViewMode';
+import {
+  getContainedMediaSize,
+  getNextScreenViewMode,
+  getScreenVideoLayout,
+} from '../lib/screenViewMode';
 import { getRemoteContentVolume } from '../lib/playbackVolume';
 import { Button } from './ui/button';
+import { SharedMoviePlayer } from './SharedMoviePlayer';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
@@ -85,9 +90,11 @@ export const VideoPlayer = ({ isIdle }) => {
     remoteScreenSharing,
     localShareSource,
     remoteShareSource,
+    requestMovieControl,
     participantVolume,
     screenVolume,
     movieVolume,
+    setMovieVolume,
     peerPresence,
   } = useWebRTC();
 
@@ -107,13 +114,24 @@ export const VideoPlayer = ({ isIdle }) => {
   const [pictureInPictureError, setPictureInPictureError] = useState(null);
   const [screenViewMode, setScreenViewMode] = useState('fit');
   const [mainVideoSize, setMainVideoSize] = useState({ width: 0, height: 0 });
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [stageAnnouncement, setStageAnnouncement] = useState('');
+  const [directPlaybackBlocked, setDirectPlaybackBlocked] = useState(false);
+  const [directPlaybackError, setDirectPlaybackError] = useState(null);
 
-  const hasRemoteScreen = remoteScreenSharing && Boolean(
-    remoteScreenStream?.getVideoTracks().some(track => track.readyState === 'live'),
+  const hasRemoteDirectMovie = remoteShareSource?.kind === 'movie'
+    && remoteShareSource.deliveryMode === 'direct'
+    && Boolean(remoteShareSource.url);
+  const hasLocalDirectMovie = localShareSource?.kind === 'movie'
+    && localShareSource.deliveryMode === 'direct'
+    && Boolean(localShareSource.url);
+  const hasRemoteScreen = remoteScreenSharing && (
+    hasRemoteDirectMovie
+    || Boolean(remoteScreenStream?.getVideoTracks().some(track => track.readyState === 'live'))
   );
-  const hasLocalScreen = isScreenSharing && Boolean(
-    localScreenStream?.getVideoTracks().some(track => track.readyState === 'live'),
+  const hasLocalScreen = isScreenSharing && (
+    hasLocalDirectMovie
+    || Boolean(localScreenStream?.getVideoTracks().some(track => track.readyState === 'live'))
   );
   const isScreenView = selectedView !== 'remote-camera';
   const canUsePictureInPicture = Boolean(
@@ -134,6 +152,16 @@ export const VideoPlayer = ({ isIdle }) => {
     : selectedView === 'local-screen'
       ? localContentLabel
       : 'Participant';
+  const activeMovie = selectedView === 'remote-screen' && remoteShareSource?.kind === 'movie'
+    ? { owner: 'remote', source: remoteShareSource }
+    : selectedView === 'local-screen' && localShareSource?.kind === 'movie'
+      ? { owner: 'local', source: localShareSource }
+      : null;
+  const directMovieUrl = activeMovie?.source.deliveryMode === 'direct'
+    ? activeMovie.source.url
+    : null;
+  const directMovieTime = directMovieUrl ? activeMovie?.source.currentTime || 0 : 0;
+  const directMovieIsPlaying = Boolean(directMovieUrl && activeMovie?.source.isPlaying);
 
   const dismissPictureInPictureError = () => {
     window.clearTimeout(pictureInPictureErrorTimerRef.current);
@@ -193,8 +221,53 @@ export const VideoPlayer = ({ isIdle }) => {
 
   useEffect(() => {
     const video = mainVideoRef.current;
-    if (video && video.srcObject !== mainStream) video.srcObject = mainStream || null;
-  }, [mainStream, selectedView, remoteCameraOff]);
+    if (!video) return;
+    setDirectPlaybackBlocked(false);
+    setDirectPlaybackError(null);
+
+    if (directMovieUrl) {
+      if (video.srcObject) video.srcObject = null;
+      video.removeAttribute('crossorigin');
+      if (video.getAttribute('src') !== directMovieUrl) {
+        video.src = directMovieUrl;
+        video.load();
+      }
+      return;
+    }
+
+    if (video.hasAttribute('src')) {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    }
+    if (video.srcObject !== mainStream) video.srcObject = mainStream || null;
+  }, [directMovieUrl, mainStream, selectedView, remoteCameraOff]);
+
+  useEffect(() => {
+    const video = mainVideoRef.current;
+    if (!video || !directMovieUrl) return undefined;
+
+    const synchronizeDirectPlayback = () => {
+      if (video.readyState >= HTMLMediaElement.HAVE_METADATA
+        && Math.abs(video.currentTime - directMovieTime) > 1.25) {
+        video.currentTime = Math.min(directMovieTime, video.duration || directMovieTime);
+      }
+      if (directMovieIsPlaying) {
+        video.play()
+          .then(() => setDirectPlaybackBlocked(false))
+          .catch(error => {
+            if (error.name === 'NotAllowedError') setDirectPlaybackBlocked(true);
+            else setDirectPlaybackError(error.message || 'This device could not play the direct movie link.');
+          });
+      } else {
+        video.pause();
+      }
+    };
+
+    synchronizeDirectPlayback();
+    video.addEventListener('loadedmetadata', synchronizeDirectPlayback);
+    return () => video.removeEventListener('loadedmetadata', synchronizeDirectPlayback);
+  }, [directMovieIsPlaying, directMovieTime, directMovieUrl]);
 
   useEffect(() => {
     const video = remoteCameraVideoRef.current;
@@ -230,6 +303,28 @@ export const VideoPlayer = ({ isIdle }) => {
   }, [setIsFullscreen]);
 
   useEffect(() => {
+    const stage = containerRef.current;
+    if (!stage) return undefined;
+
+    const syncStageSize = () => {
+      const nextSize = { width: stage.clientWidth, height: stage.clientHeight };
+      setStageSize(current => (
+        current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+      ));
+    };
+    syncStageSize();
+
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(syncStageSize);
+      observer.observe(stage);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', syncStageSize, { passive: true });
+    return () => window.removeEventListener('resize', syncStageSize);
+  }, []);
+
+  useEffect(() => {
     const videos = [
       [mainVideoRef.current, 'main'],
       [remoteCameraVideoRef.current, 'remote-camera'],
@@ -259,7 +354,8 @@ export const VideoPlayer = ({ isIdle }) => {
 
   const toggleFullscreen = async () => {
     if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen().catch(err => {
+      const fullscreenRoot = document.getElementById('root') || document.documentElement;
+      await fullscreenRoot.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
       });
     } else if (document.exitFullscreen) {
@@ -311,26 +407,58 @@ export const VideoPlayer = ({ isIdle }) => {
     ));
   };
 
+  const handleMovieCommand = (owner, command) => {
+    const video = mainVideoRef.current;
+    if (directMovieUrl && video) {
+      if (command.action === 'play') {
+        video.play()
+          .then(() => setDirectPlaybackBlocked(false))
+          .catch(error => setDirectPlaybackError(error.message || 'Playback was blocked on this device.'));
+      }
+      if (command.action === 'pause') video.pause();
+      if (command.action === 'seek' && Number.isFinite(command.currentTime)) {
+        video.currentTime = Math.min(command.currentTime, video.duration || command.currentTime);
+      }
+    }
+    requestMovieControl(owner, command);
+  };
+
   const showParticipantPlaceholder = selectedView === 'remote-camera' && (remoteCameraOff || !remoteStream);
-  const showStreamLoading = isScreenView && !mainStream;
+  const hasMainMedia = Boolean(mainStream || directMovieUrl);
+  const showStreamLoading = isScreenView && !hasMainMedia;
   const controlsHidden = isIdle && (isFullscreen || isPresentationMode);
   const screenVideoLayout = getScreenVideoLayout(screenViewMode);
+  const usesBlackStage = isScreenView || isFullscreen;
   const usesPixelView = isScreenView && screenViewMode === 'pixel';
-  const pixelSurfaceStyle = usesPixelView && mainVideoSize.width && mainVideoSize.height
+  const nativeVideoSize = activeMovie?.source.width && activeMovie?.source.height
+    ? { width: activeMovie.source.width, height: activeMovie.source.height }
+    : mainVideoSize;
+  const pixelSurfaceStyle = usesPixelView && nativeVideoSize.width && nativeVideoSize.height
     ? {
-        width: `max(100%, ${mainVideoSize.width}px)`,
-        height: `max(100%, ${mainVideoSize.height}px)`,
+        width: `max(100%, ${nativeVideoSize.width}px)`,
+        height: `max(100%, ${nativeVideoSize.height}px)`,
       }
     : undefined;
-  const pixelVideoStyle = usesPixelView && mainVideoSize.width && mainVideoSize.height
-    ? { width: `${mainVideoSize.width}px`, height: `${mainVideoSize.height}px` }
+  const pixelVideoStyle = usesPixelView && nativeVideoSize.width && nativeVideoSize.height
+    ? { width: `${nativeVideoSize.width}px`, height: `${nativeVideoSize.height}px` }
     : undefined;
+  const containedMovieSize = activeMovie && screenViewMode === 'fit'
+    ? getContainedMediaSize(stageSize.width, stageSize.height, activeMovie.source.aspectRatio)
+    : null;
+  const containedMovieStyle = containedMovieSize
+    ? {
+        width: `${containedMovieSize.width}px`,
+        height: `${containedMovieSize.height}px`,
+        objectFit: 'fill',
+      }
+    : undefined;
+  const mainVideoStyle = pixelVideoStyle || containedMovieStyle;
 
   return (
     <TooltipProvider delayDuration={250}>
       <main
         ref={containerRef}
-        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden bg-[#090d0f] ${(isFullscreen || isPresentationMode) && isChatOpen ? 'call-stage--chat-docked' : ''}`}
+        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-[#090d0f]'} ${(isFullscreen || isPresentationMode) && isChatOpen ? 'call-stage--chat-docked' : ''}`}
       >
         <audio ref={remoteAudioRef} autoPlay aria-label="Participant audio" />
         {pictureInPictureError ? (
@@ -372,16 +500,16 @@ export const VideoPlayer = ({ isIdle }) => {
         {showParticipantPlaceholder ? (
           <ParticipantPlaceholder connected={connected} peerPresence={peerPresence} />
         ) : showStreamLoading ? (
-          <section className="flex h-full w-full items-center justify-center bg-[#090d0f]" aria-live="polite">
+          <section className="flex h-full w-full items-center justify-center bg-black" aria-live="polite">
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-zinc-400">
               <span className="size-2 animate-pulse rounded-full bg-teal-300" />
               Connecting to {mainLabel.toLowerCase()}…
             </div>
           </section>
-        ) : mainStream ? (
-          <div className={`h-full w-full ${isScreenView ? screenVideoLayout.viewportClassName : 'overflow-hidden'}`}>
+        ) : hasMainMedia ? (
+          <div className={`h-full w-full ${isScreenView ? `bg-black ${screenVideoLayout.viewportClassName}` : 'overflow-hidden'}`}>
             <div
-              className={isScreenView ? screenVideoLayout.surfaceClassName : 'h-full w-full'}
+              className={isScreenView ? `bg-black ${screenVideoLayout.surfaceClassName}` : 'h-full w-full'}
               style={pixelSurfaceStyle}
             >
               <video
@@ -392,9 +520,14 @@ export const VideoPlayer = ({ isIdle }) => {
                 onLoadedMetadata={syncMainVideoSize}
                 onResize={syncMainVideoSize}
                 onDoubleClick={toggleFullscreen}
+                onError={() => {
+                  if (directMovieUrl) {
+                    setDirectPlaybackError('This participant could not load the direct URL. The link may be device-, region-, session-, or cookie-restricted.');
+                  }
+                }}
                 aria-label={`${mainLabel} video`}
                 className={`cursor-pointer transition-opacity duration-300 motion-reduce:transition-none ${isScreenView ? screenVideoLayout.videoClassName : 'h-full w-full object-contain'} ${hideMainVideo ? 'opacity-0' : 'opacity-100'} ${selectedView === 'remote-camera' && remoteMirrored ? 'scale-x-[-1]' : ''}`}
-                style={pixelVideoStyle}
+                style={mainVideoStyle}
               />
             </div>
           </div>
@@ -402,7 +535,7 @@ export const VideoPlayer = ({ isIdle }) => {
           <ParticipantPlaceholder connected={connected} peerPresence={peerPresence} />
         )}
 
-        {!showParticipantPlaceholder && mainStream && isPresentationMode ? (
+        {!showParticipantPlaceholder && hasMainMedia && isPresentationMode ? (
           <div className={`absolute right-3 top-3 z-40 transition-opacity duration-300 motion-reduce:transition-none sm:right-5 sm:top-5 ${controlsHidden ? 'opacity-35' : 'opacity-100'}`}>
             <Button
               variant="active"
@@ -415,7 +548,7 @@ export const VideoPlayer = ({ isIdle }) => {
               Exit focus
             </Button>
           </div>
-        ) : !showParticipantPlaceholder && mainStream ? (
+        ) : !showParticipantPlaceholder && hasMainMedia ? (
           <div className={`absolute right-5 top-5 z-20 flex gap-2 transition-opacity duration-300 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -481,7 +614,7 @@ export const VideoPlayer = ({ isIdle }) => {
           </div>
         ) : null}
 
-        {isScreenView && mainStream ? (
+        {isScreenView && hasMainMedia ? (
           <div className={`absolute z-30 transition-[opacity,transform] duration-300 motion-reduce:transition-none ${isPresentationMode ? 'bottom-3 left-3 sm:bottom-5 sm:left-5' : localShareSource?.kind === 'movie' ? 'bottom-40 left-3 sm:left-6' : 'bottom-20 left-3 sm:bottom-6 sm:left-6'} ${controlsHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}>
             <Tabs value={screenViewMode} onValueChange={handleScreenViewModeChange}>
               <TabsList className="min-h-0 gap-0.5 p-0" aria-label="Shared screen sizing">
@@ -489,7 +622,7 @@ export const VideoPlayer = ({ isIdle }) => {
                   Fit
                 </TabsTrigger>
                 <TabsTrigger value="fill" className="h-11 px-2.5" title="Fill the stage and crop the edges">
-                  Fill
+                  Crop
                 </TabsTrigger>
                 <TabsTrigger
                   value="pixel"
@@ -504,10 +637,43 @@ export const VideoPlayer = ({ isIdle }) => {
           </div>
         ) : null}
 
-        {selectedView === 'remote-screen' && remoteShareSource?.kind === 'movie' ? (
-          <div className={`pointer-events-none absolute left-1/2 z-20 max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-white/10 bg-[#111719]/85 px-3 py-2 text-center text-xs text-zinc-300 backdrop-blur-xl transition-opacity ${localShareSource?.kind === 'movie' ? 'bottom-52' : 'bottom-32'} ${controlsHidden ? 'opacity-0' : 'opacity-100'}`} role="status" aria-hidden={controlsHidden}>
-            <span className="font-medium text-zinc-100">{remoteShareSource.name || 'Shared movie'}</span>
-            <span className="text-zinc-500"> · {remoteShareSource.isPlaying ? 'Playing' : 'Paused by host'}</span>
+        {activeMovie?.source.subtitleText ? (
+          <div className="pointer-events-none absolute bottom-44 left-1/2 z-20 w-[min(54rem,calc(100vw-2rem))] -translate-x-1/2 px-4 text-center" aria-live="off">
+            <span className="whitespace-pre-line rounded-lg bg-black/80 px-3 py-1.5 text-base font-medium leading-7 text-white shadow-lg sm:text-lg">
+              {activeMovie.source.subtitleText}
+            </span>
+          </div>
+        ) : null}
+
+        {activeMovie ? (
+          <SharedMoviePlayer
+            owner={activeMovie.owner}
+            source={activeMovie.source}
+            hidden={controlsHidden}
+            onCommand={handleMovieCommand}
+            volume={movieVolume}
+            onVolumeChange={setMovieVolume}
+          />
+        ) : null}
+
+        {directMovieUrl && (directPlaybackBlocked || directPlaybackError) ? (
+          <div className="absolute left-1/2 top-24 z-40 flex w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-amber-300/20 bg-amber-950/95 p-3 text-sm text-amber-100 shadow-xl" role="alert">
+            <p className="min-w-0 flex-1">
+              {directPlaybackError || 'Your browser requires a click before playing this direct link with audio.'}
+            </p>
+            {!directPlaybackError ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  mainVideoRef.current?.play()
+                    .then(() => setDirectPlaybackBlocked(false))
+                    .catch(error => setDirectPlaybackError(error.message || 'Playback is unavailable on this device.'));
+                }}
+              >
+                Play here
+              </Button>
+            ) : null}
           </div>
         ) : null}
 

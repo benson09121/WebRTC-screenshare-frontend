@@ -21,6 +21,13 @@ html, body, #root {
   overflow: hidden;
 }
 
+html:fullscreen,
+body:fullscreen,
+#root:fullscreen,
+:fullscreen::backdrop {
+  background: #000;
+}
+
 body {
   font-family: 'Geist', 'Avenir Next', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;

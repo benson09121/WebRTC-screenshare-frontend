@@ -14,12 +14,14 @@ PairBeam is a database-free WebRTC room for two people to call, share screens or
 
 - Starts a private two-person room without sign-up or installation
 - Supports microphone, camera, and simultaneous two-way screen sharing
-- Streams a compatible movie selected from the host computer or loaded from a direct media URL without uploading it to PairBeam
+- Streams a compatible movie selected from the host computer, or synchronizes a direct media URL when browser capture is blocked
 - Gives the movie host play, pause, seek, and stop controls with 24/30fps adaptive quality
+- Shows synchronized movie controls to both participants so either person can play, pause, seek, toggle an added SRT subtitle, or request an exposed audio-track change
+- Preserves native movie aspect ratios in fullscreen with a true-black shared-content stage and explicit Fit, Crop, and 100% viewing modes
 - Lets each participant independently choose whose screen to view
 - Returns to the participant camera or avatar when a share ends
 - Offers adaptive Auto quality plus native, 1080p60, 720p60, and 480p30 sharing presets
-- Includes a distraction-free presentation mode with Fit, Fill, and scrollable 100% screen views
+- Includes a distraction-free presentation mode with Fit, Crop, and scrollable 100% screen views
 - Sends microphone and shared-content audio independently, and can use an exposed PipeWire/PulseAudio monitor on Linux
 - Lets each listener independently adjust participant voice, shared-screen audio, and shared-movie audio without changing what the other person hears
 - Floats the participant, local camera, or active video above the desktop with browser Picture-in-Picture support
@@ -58,7 +60,7 @@ Room membership exists only in the signaling server's process memory. PairBeam h
 ### Requirements
 
 - Node.js 20.19+ or 22.12+
-- A modern browser with WebRTC and screen-capture support; local-movie sharing currently requires media-element `captureStream()` support
+- A modern browser with WebRTC and screen-capture support; local-file movie relay requires media-element `captureStream()` support, while a direct media URL can fall back to both browsers loading it independently
 - The [PairBeam signaling server](https://github.com/benson09121/WebRTC-screenshare-backend)
 
 Place the frontend and backend repositories beside each other, then start them in separate terminals.
@@ -101,7 +103,8 @@ VITE_TURN_PASSWORD=deployment-credential
 - Treat a room link as an invitation secret: anyone with the link can try to join until the two-person room is full.
 - Signaling handles room identifiers plus SDP/ICE coordination metadata, even though it does not receive call or chat content.
 - A TURN server may relay encrypted WebRTC packets when peers cannot connect directly.
-- Movie sharing depends on the browser being able to decode the selected source. MP4 with H.264/AAC and WebM are the safest choices. Direct links must be HTTP(S), reachable without login, and served with compatible media CORS headers; YouTube, Netflix, and normal webpage URLs should be shared as a browser tab with audio instead.
+- Movie sharing depends on every participating browser being able to decode the selected source. MP4 with H.264/AAC and WebM are the safest choices. For a direct link, PairBeam first attempts host-side capture and WebRTC relay, which requires compatible media CORS headers. If that is blocked but ordinary browser playback succeeds, PairBeam sends the exact URL over the encrypted peer data channel so both participants fetch it and PairBeam synchronizes their controls. URLs that depend on private query tokens should therefore be shared only with a trusted participant. Login-only sources, YouTube, Netflix, and normal webpage URLs should be shared as a browser tab with audio instead.
+- Media-element capture can initially return an empty stream; PairBeam waits for decoded video and asynchronously exposed tracks before reporting a format or browser failure.
 
 ## Verification
 

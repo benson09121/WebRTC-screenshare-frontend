@@ -1,16 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from '../context/useWebRTC';
-import { Film, Link2, Mic, MicOff, Pause, Play, Video, VideoOff, MonitorPlay, MonitorUp, PhoneOff, Settings, Upload, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, ChevronDown, Film, Link2, Mic, MicOff, Play, Video, VideoOff, MonitorPlay, MonitorUp, PhoneOff, Upload, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { createEmptyAudioTrack, createEmptyVideoTrack } from '../lib/mediaTracks';
 import {
   formatMediaTime,
+  getActiveSubtitleText,
+  getActiveNativeSubtitleText,
   getCaptureStream,
   getDirectMediaDisplayName,
   getMovieDisplayName,
+  getMovieVideoGeometry,
+  getNativeAudioTrackOptions,
+  getNativeSubtitleTrackOptions,
   normalizeDirectMediaUrl,
+  parseSrt,
+  selectNativeAudioTrack,
+  selectNativeSubtitleTrack,
+  waitForCapturedTrack,
+  waitForMovieFrame,
   waitForMovieMetadata,
 } from '../lib/movieShare';
 import {
@@ -19,6 +30,7 @@ import {
   advanceAutoQuality,
   createAutoQualityState,
   getAutoQualityPreset,
+  getTrackQualityConstraints,
   summarizeScreenSenderStats,
 } from '../lib/screenShareQuality';
 
@@ -35,6 +47,7 @@ const SCREEN_AUDIO_COPY = {
   native: 'Shared-content audio is included directly.',
   monitor: 'Desktop audio is included from the selected Linux monitor. Use headphones to reduce call-audio echo.',
   unavailable: 'No screen-audio track was provided. Video is still being shared.',
+  direct: 'Each participant is playing the direct link locally; movie audio is not relayed through WebRTC.',
 };
 
 const isMonitorSource = device => /(^|[\s._-])monitor([\s._-]|$)|monitor of/i.test(device.label);
@@ -76,22 +89,13 @@ const VolumeControl = ({ id, icon: Icon, label, description, value, onChange }) 
   const VolumeIcon = muted ? VolumeX : Volume2;
 
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-white/[0.05] text-zinc-400">
-          <Icon className="size-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <label htmlFor={id} className="text-sm font-medium text-zinc-200">{label}</label>
-            <span className="shrink-0 font-mono text-xs text-zinc-500">{value}%</span>
-          </div>
-          <p id={`${id}-description`} className="mt-0.5 text-[11px] leading-4 text-zinc-600">
-            {description}
-          </p>
-        </div>
+    <div>
+      <div className="flex items-center gap-2">
+        <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
+        <label htmlFor={id} className="text-xs font-medium text-zinc-300">{label}</label>
+        <span className="ml-auto shrink-0 font-mono text-[11px] text-zinc-500">{value}%</span>
       </div>
-      <div className="mt-3 flex items-center gap-2.5">
+      <div className="mt-2 flex items-center gap-2.5">
         <VolumeIcon className={`size-4 shrink-0 ${muted ? 'text-zinc-600' : 'text-teal-300'}`} aria-hidden="true" />
         <input
           id={id}
@@ -106,6 +110,9 @@ const VolumeControl = ({ id, icon: Icon, label, description, value, onChange }) 
           className="h-2 w-full cursor-pointer accent-teal-300"
         />
       </div>
+      <p id={`${id}-description`} className="mt-1.5 text-[10px] leading-4 text-zinc-600">
+        {description}
+      </p>
     </div>
   );
 };
@@ -133,12 +140,10 @@ export const ControlPanel = ({ isIdle }) => {
     setParticipantVolume,
     screenVolume,
     setScreenVolume,
-    movieVolume,
-    setMovieVolume,
+    movieControlRequest,
     connected,
   } = useWebRTC();
   
-  const [showSettings, setShowSettings] = useState(false);
   const [quality, setQuality] = useState('auto');
   const [contentType, setContentType] = useState('motion'); // 'motion' (Movie) or 'detail' (Text)
   const [mediaError, setMediaError] = useState(null);
@@ -147,18 +152,28 @@ export const ControlPanel = ({ isIdle }) => {
   
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedAudioDevice, setSelectedAudioDevice] = useState('');
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState('');
   const [desktopAudioDevices, setDesktopAudioDevices] = useState([]);
   const [selectedDesktopAudioDevice, setSelectedDesktopAudioDevice] = useState('');
   const [screenAudioStatus, setScreenAudioStatus] = useState('idle');
   const [selectedMovie, setSelectedMovie] = useState(null);
-  const [movieProgress, setMovieProgress] = useState({ currentTime: 0, duration: 0, isPlaying: false });
+  const [, setMovieProgress] = useState({ currentTime: 0, duration: 0, isPlaying: false });
   const [showMovieSourcePicker, setShowMovieSourcePicker] = useState(false);
   const [directMediaUrl, setDirectMediaUrl] = useState('');
   const [isLoadingDirectMedia, setIsLoadingDirectMedia] = useState(false);
+  const [selectedSubtitle, setSelectedSubtitle] = useState(null);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [movieAudioTracks, setMovieAudioTracks] = useState([]);
+  const [selectedMovieAudioTrack, setSelectedMovieAudioTrack] = useState(0);
+  const [nativeSubtitleTracks, setNativeSubtitleTracks] = useState([]);
+  const [selectedNativeSubtitleTrack, setSelectedNativeSubtitleTrack] = useState(null);
+  const [activeSettingsMenu, setActiveSettingsMenu] = useState(null);
   const startCameraRef = useRef(null);
   const activeDisplayStreamRef = useRef(null);
   const screenAudioTrackRef = useRef(null);
   const movieInputRef = useRef(null);
+  const subtitleInputRef = useRef(null);
   const moviePlayerRef = useRef(null);
   const movieObjectUrlRef = useRef(null);
   const stoppingShareRef = useRef(false);
@@ -170,9 +185,25 @@ export const ControlPanel = ({ isIdle }) => {
   const screenQualitySenderRef = useRef(null);
   const applyScreenQualityRef = useRef(null);
   const mediaErrorTimerRef = useRef(null);
+  const selectedSubtitleRef = useRef(null);
+  const subtitlesEnabledRef = useRef(true);
+  const movieAudioTracksRef = useRef([]);
+  const selectedMovieAudioTrackRef = useRef(0);
+  const selectedNativeSubtitleTrackRef = useRef(null);
+  const nativeSubtitleTracksRef = useRef([]);
+  const lastMovieBroadcastAtRef = useRef(0);
+  const lastBroadcastSubtitleRef = useRef('');
+  const sendMovieStateRef = useRef(null);
+  const processedMovieControlRequestRef = useRef(null);
   getSenderRef.current = getSender;
   qualityRef.current = quality;
   contentTypeRef.current = contentType;
+  selectedSubtitleRef.current = selectedSubtitle;
+  subtitlesEnabledRef.current = subtitlesEnabled;
+  movieAudioTracksRef.current = movieAudioTracks;
+  selectedMovieAudioTrackRef.current = selectedMovieAudioTrack;
+  nativeSubtitleTracksRef.current = nativeSubtitleTracks;
+  selectedNativeSubtitleTrackRef.current = selectedNativeSubtitleTrack;
 
   const dismissMediaError = () => {
     window.clearTimeout(mediaErrorTimerRef.current);
@@ -206,9 +237,24 @@ export const ControlPanel = ({ isIdle }) => {
     setSelectedMovie(null);
     setMovieProgress({ currentTime: 0, duration: 0, isPlaying: false });
     setDirectMediaUrl('');
+    setSelectedSubtitle(null);
+    setSubtitlesEnabled(true);
+    setMovieAudioTracks([]);
+    setSelectedMovieAudioTrack(0);
+    setNativeSubtitleTracks([]);
+    setSelectedNativeSubtitleTrack(null);
+    selectedSubtitleRef.current = null;
+    subtitlesEnabledRef.current = true;
+    movieAudioTracksRef.current = [];
+    selectedMovieAudioTrackRef.current = 0;
+    selectedNativeSubtitleTrackRef.current = null;
+    nativeSubtitleTracksRef.current = [];
+    lastMovieBroadcastAtRef.current = 0;
+    lastBroadcastSubtitleRef.current = '';
     setShowMovieSourcePicker(false);
     setIsLoadingDirectMedia(false);
     if (movieInputRef.current) movieInputRef.current.value = '';
+    if (subtitleInputRef.current) subtitleInputRef.current.value = '';
   };
 
   const startCamera = async () => {
@@ -221,7 +267,13 @@ export const ControlPanel = ({ isIdle }) => {
         constraints.audio = selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true;
       }
       if (!isCameraOff) {
-        constraints.video = { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" };
+        constraints.video = {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          ...(selectedVideoDevice
+            ? { deviceId: { exact: selectedVideoDevice } }
+            : { facingMode: 'user' }),
+        };
       }
 
       // If both are off, generate dummy tracks to force WebRTC sendrecv negotiation!
@@ -284,10 +336,12 @@ export const ControlPanel = ({ isIdle }) => {
       
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      const videoInputs = devices.filter(device => device.kind === 'videoinput');
       const monitorInputs = audioInputs.filter(
         device => isMonitorSource(device) && !isVirtualAudioSource(device),
       );
       setAudioDevices(audioInputs.filter(device => !isMonitorSource(device)));
+      setVideoDevices(videoInputs);
       setDesktopAudioDevices(monitorInputs);
       setSelectedDesktopAudioDevice(current => (
         current && !monitorInputs.some(device => device.deviceId === current) ? '' : current
@@ -295,10 +349,15 @@ export const ControlPanel = ({ isIdle }) => {
       
       // If we already have an active audio track, set the selected device ID to match it
       if (localStream) {
-        const activeTrack = localStream.getAudioTracks()[0];
-        if (activeTrack) {
-          const activeDevice = audioInputs.find(d => d.label === activeTrack.label);
+        const activeAudioTrack = localStream.getAudioTracks()[0];
+        if (activeAudioTrack) {
+          const activeDevice = audioInputs.find(d => d.label === activeAudioTrack.label);
           if (activeDevice) setSelectedAudioDevice(activeDevice.deviceId);
+        }
+        const activeVideoTrack = localStream.getVideoTracks()[0];
+        if (activeVideoTrack) {
+          const activeDevice = videoInputs.find(d => d.label === activeVideoTrack.label);
+          if (activeDevice) setSelectedVideoDevice(activeDevice.deviceId);
         }
       }
     } catch (err) {
@@ -333,6 +392,34 @@ export const ControlPanel = ({ isIdle }) => {
       } catch (err) {
         console.error("Failed to change audio device", err);
       }
+    }
+  };
+
+  const handleVideoDeviceChange = async (event) => {
+    const deviceId = event.target.value;
+    setSelectedVideoDevice(deviceId);
+    if (isCameraOff) return;
+
+    try {
+      dismissMediaError();
+      const newVideoStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: { exact: deviceId },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      const newVideoTrack = newVideoStream.getVideoTracks()[0];
+      if (!newVideoTrack) throw new Error('The selected camera did not provide a video track');
+
+      const oldVideoTracks = localStream?.getVideoTracks() || [];
+      const audioTracks = localStream?.getAudioTracks() || [];
+      await updateCameraStream(new MediaStream([...audioTracks, newVideoTrack]));
+      oldVideoTracks.forEach(track => track.stop());
+      getDevices();
+    } catch (error) {
+      console.error('Failed to change camera device', error);
+      showMediaError(error.name === 'NotAllowedError' ? 'Camera Permission Denied' : error.message);
     }
   };
 
@@ -412,7 +499,13 @@ export const ControlPanel = ({ isIdle }) => {
           throw new Error("Media API requires HTTPS or Localhost");
         }
         const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            ...(selectedVideoDevice
+              ? { deviceId: { exact: selectedVideoDevice } }
+              : { facingMode: 'user' }),
+          },
         });
         const newVideoTrack = newStream.getVideoTracks()[0];
         
@@ -430,6 +523,7 @@ export const ControlPanel = ({ isIdle }) => {
         }
         setIsCameraOff(false);
         sendControlMessage({ type: 'camera-toggle', isCameraOff: false });
+        getDevices();
       } catch (err) {
         console.error("Failed to turn on camera hardware", err);
         showMediaError(err.name === 'NotAllowedError' ? 'Camera Permission Denied' : err.message);
@@ -446,13 +540,7 @@ export const ControlPanel = ({ isIdle }) => {
     videoTrack.contentHint = contentHint;
 
     if (videoTrack.applyConstraints) {
-      const constraints = preset.lossless
-        ? { frameRate: { ideal: preset.frameRate, max: preset.frameRate } }
-        : {
-            width: { ideal: preset.width, max: preset.width },
-            height: { ideal: preset.height, max: preset.height },
-            frameRate: { ideal: preset.frameRate, max: preset.frameRate },
-          };
+      const constraints = getTrackQualityConstraints(preset, nextContentType);
       try {
         await videoTrack.applyConstraints(constraints);
       } catch (error) {
@@ -495,7 +583,7 @@ export const ControlPanel = ({ isIdle }) => {
   applyScreenQualityRef.current = applyScreenQuality;
 
   useEffect(() => {
-    if (!isScreenSharing) return undefined;
+    if (!isScreenSharing || localShareSource?.deliveryMode === 'direct') return undefined;
 
     let disposed = false;
     let sampling = false;
@@ -559,7 +647,7 @@ export const ControlPanel = ({ isIdle }) => {
       disposed = true;
       window.clearInterval(intervalId);
     };
-  }, [isScreenSharing, localShareSource?.kind]);
+  }, [isScreenSharing, localShareSource?.deliveryMode, localShareSource?.kind]);
 
   const handleQualityChange = async (event) => {
     const nextQuality = event.target.value;
@@ -729,7 +817,7 @@ export const ControlPanel = ({ isIdle }) => {
       setLocalShareSource({ kind: 'screen', name: null, duration: null, isPlaying: true });
       sendControlMessage({ type: 'screen-toggle', isScreenSharing: true, source: 'screen' });
       shareStarted = true;
-      setShowSettings(false);
+      setActiveSettingsMenu(null);
 
       videoTrack.onended = () => {
         stopScreenShare().catch(error => console.warn('Failed to stop screen sharing', error));
@@ -784,14 +872,30 @@ export const ControlPanel = ({ isIdle }) => {
       player.load();
       await waitForMovieMetadata(player);
 
+      const audioTracks = getNativeAudioTrackOptions(player);
+      const activeAudioTrack = audioTracks.find(track => track.enabled)?.index ?? 0;
+      setMovieAudioTracks(audioTracks);
+      setSelectedMovieAudioTrack(activeAudioTrack);
+      const subtitleTracks = getNativeSubtitleTrackOptions(player);
+      const activeSubtitleTrack = subtitleTracks.find(track => track.active)?.index
+        ?? subtitleTracks[0]?.index
+        ?? null;
+      selectedNativeSubtitleTrackRef.current = activeSubtitleTrack;
+      setSelectedNativeSubtitleTrack(activeSubtitleTrack);
+      nativeSubtitleTracksRef.current = subtitleTracks;
+      setNativeSubtitleTracks(subtitleTracks);
+      if (activeSubtitleTrack != null) selectNativeSubtitleTrack(player, activeSubtitleTrack, true);
+
       const movie = {
         name: getMovieDisplayName(file.name),
         duration: Number.isFinite(player.duration) ? player.duration : 0,
         sourceType: 'file',
+        container: file.name.split('.').at(-1)?.toLowerCase() || '',
+        ...getMovieVideoGeometry(player),
       };
       setSelectedMovie(movie);
       setMovieProgress({ currentTime: 0, duration: movie.duration, isPlaying: false });
-      setShowSettings(false);
+      setActiveSettingsMenu(null);
       setShowMovieSourcePicker(false);
     } catch (error) {
       clearMovieSource();
@@ -809,10 +913,6 @@ export const ControlPanel = ({ isIdle }) => {
     const player = moviePlayerRef.current;
     const canCaptureMovie = typeof player?.captureStream === 'function'
       || typeof player?.mozCaptureStream === 'function';
-    if (!canCaptureMovie) {
-      showMediaError('This browser cannot stream linked media. Try current Chrome or Firefox, or share a browser tab with audio');
-      return;
-    }
 
     try {
       dismissMediaError();
@@ -821,23 +921,57 @@ export const ControlPanel = ({ isIdle }) => {
       if (movieObjectUrlRef.current) URL.revokeObjectURL(movieObjectUrlRef.current);
       movieObjectUrlRef.current = null;
       player.pause();
-      player.crossOrigin = 'anonymous';
-      player.src = normalizedUrl;
-      player.load();
-      await waitForMovieMetadata(player, {
-        errorMessage: 'This URL could not be played. Make sure it is a direct video file, allows cross-origin playback, and does not require a login.',
-      });
+      let deliveryMode = canCaptureMovie ? 'relay' : 'direct';
+      if (canCaptureMovie) {
+        player.crossOrigin = 'anonymous';
+        player.src = normalizedUrl;
+        player.load();
+      }
+      try {
+        if (!canCaptureMovie) throw new Error('Media-element capture is unavailable.');
+        await waitForMovieMetadata(player, {
+          errorMessage: 'The media server did not permit CORS playback for WebRTC relay.',
+        });
+      } catch {
+        // VLC is not subject to browser CORS. Retry without CORS so both peers
+        // can fetch and synchronize the URL instead of relaying captured frames.
+        player.pause();
+        player.removeAttribute('crossorigin');
+        player.src = normalizedUrl;
+        player.load();
+        await waitForMovieMetadata(player, {
+          errorMessage: 'This direct URL could not be played by the browser. It may use an unsupported codec, block browser requests, require cookies, redirect to a webpage, or be blocked as mixed content.',
+        });
+        deliveryMode = 'direct';
+      }
+
+      const audioTracks = getNativeAudioTrackOptions(player);
+      const activeAudioTrack = audioTracks.find(track => track.enabled)?.index ?? 0;
+      setMovieAudioTracks(audioTracks);
+      setSelectedMovieAudioTrack(activeAudioTrack);
+      const subtitleTracks = getNativeSubtitleTrackOptions(player);
+      const activeSubtitleTrack = subtitleTracks.find(track => track.active)?.index
+        ?? subtitleTracks[0]?.index
+        ?? null;
+      selectedNativeSubtitleTrackRef.current = activeSubtitleTrack;
+      setSelectedNativeSubtitleTrack(activeSubtitleTrack);
+      nativeSubtitleTracksRef.current = subtitleTracks;
+      setNativeSubtitleTracks(subtitleTracks);
+      if (activeSubtitleTrack != null) selectNativeSubtitleTrack(player, activeSubtitleTrack, true);
 
       const movie = {
         name: getDirectMediaDisplayName(normalizedUrl),
         duration: Number.isFinite(player.duration) ? player.duration : 0,
         sourceType: 'url',
+        url: normalizedUrl,
+        deliveryMode,
+        ...getMovieVideoGeometry(player),
       };
       setSelectedMovie(movie);
       setMovieProgress({ currentTime: 0, duration: movie.duration, isPlaying: false });
       setDirectMediaUrl('');
       setShowMovieSourcePicker(false);
-      setShowSettings(false);
+      setActiveSettingsMenu(null);
     } catch (error) {
       player?.removeAttribute('src');
       player?.removeAttribute('crossorigin');
@@ -858,11 +992,75 @@ export const ControlPanel = ({ isIdle }) => {
       dismissMediaError();
       if (isScreenSharing) await stopScreenShare({ preserveMovieSource: true });
 
-      await player.play();
+      if (selectedMovie.deliveryMode === 'direct') {
+        await player.play();
+        await waitForMovieFrame(player);
+        const source = {
+          kind: 'movie',
+          name: selectedMovie.name,
+          duration: selectedMovie.duration,
+          deliveryMode: 'direct',
+          url: selectedMovie.url,
+          ...getMovieVideoGeometry(player),
+          currentTime: player.currentTime,
+          isPlaying: true,
+          subtitleText: getCurrentMovieSubtitleText(player),
+          subtitlesAvailable: Boolean(selectedSubtitleRef.current?.cues.length || nativeSubtitleTracksRef.current.length),
+          subtitlesEnabled: subtitlesEnabledRef.current,
+          subtitleTracks: selectedSubtitleRef.current ? [] : nativeSubtitleTracksRef.current,
+          selectedSubtitleTrack: selectedNativeSubtitleTrackRef.current,
+          audioTracks: [],
+          selectedAudioTrack: 0,
+        };
+        activeDisplayStreamRef.current = null;
+        screenAudioTrackRef.current = null;
+        setScreenAudioStatus('direct');
+        await setSharedContentAudioTrack(null);
+        await setScreenStream(null);
+        setIsScreenSharing(true);
+        setLocalShareSource(source);
+        sendControlMessage({ type: 'screen-toggle', isScreenSharing: true, source: 'movie', ...source });
+        setMovieProgress({
+          currentTime: player.currentTime,
+          duration: selectedMovie.duration,
+          isPlaying: true,
+        });
+        setActiveSettingsMenu(null);
+        return;
+      }
+
       capturedStream = getCaptureStream(player);
-      const videoTrack = capturedStream?.getVideoTracks()[0] || null;
-      const audioTrack = capturedStream?.getAudioTracks()[0] || null;
-      if (!videoTrack) throw new Error('The browser did not expose a video track for this movie');
+      if (!capturedStream) {
+        throw new Error('This browser does not support capturing movie playback. Try current Chrome or Firefox, or share the browser tab with audio.');
+      }
+
+      // Capture before playback, as recommended by the media-element capture API.
+      // Some browsers return an initially empty stream and add its tracks later.
+      await player.play();
+      await waitForMovieFrame(player);
+      const detectedAudioTracks = getNativeAudioTrackOptions(player);
+      if (detectedAudioTracks.length) {
+        const activeAudioTrack = detectedAudioTracks.find(track => track.enabled)?.index ?? 0;
+        movieAudioTracksRef.current = detectedAudioTracks;
+        selectedMovieAudioTrackRef.current = activeAudioTrack;
+        setMovieAudioTracks(detectedAudioTracks);
+        setSelectedMovieAudioTrack(activeAudioTrack);
+      }
+      const detectedSubtitleTracks = getNativeSubtitleTrackOptions(player);
+      if (detectedSubtitleTracks.length) {
+        const activeSubtitleTrack = detectedSubtitleTracks.find(track => track.active)?.index
+          ?? detectedSubtitleTracks[0].index;
+        selectedNativeSubtitleTrackRef.current = activeSubtitleTrack;
+        setSelectedNativeSubtitleTrack(activeSubtitleTrack);
+        nativeSubtitleTracksRef.current = detectedSubtitleTracks;
+        setNativeSubtitleTracks(detectedSubtitleTracks);
+        if (!selectedSubtitleRef.current) {
+          selectNativeSubtitleTrack(player, activeSubtitleTrack, subtitlesEnabledRef.current);
+        }
+      }
+      const videoTrack = await waitForCapturedTrack(capturedStream, 'video');
+      const audioTrack = capturedStream.getAudioTracks()[0]
+        || await waitForCapturedTrack(capturedStream, 'audio', { timeoutMs: 750 }).catch(() => null);
 
       videoTrack.contentHint = 'motion';
       if (audioTrack) audioTrack.contentHint = 'music';
@@ -879,13 +1077,21 @@ export const ControlPanel = ({ isIdle }) => {
         kind: 'movie',
         name: selectedMovie.name,
         duration: selectedMovie.duration,
+        ...getMovieVideoGeometry(player),
         currentTime: player.currentTime,
         isPlaying: true,
+        subtitleText: getCurrentMovieSubtitleText(player),
+        subtitlesAvailable: Boolean(selectedSubtitleRef.current?.cues.length || nativeSubtitleTracksRef.current.length),
+        subtitlesEnabled: subtitlesEnabledRef.current,
+        subtitleTracks: selectedSubtitleRef.current ? [] : nativeSubtitleTracksRef.current,
+        selectedSubtitleTrack: selectedNativeSubtitleTrackRef.current,
+        audioTracks: movieAudioTracksRef.current,
+        selectedAudioTrack: selectedMovieAudioTrackRef.current,
       };
       setLocalShareSource(source);
       sendControlMessage({ type: 'screen-toggle', isScreenSharing: true, source: 'movie', ...source });
       setMovieProgress(current => ({ ...current, currentTime: player.currentTime, isPlaying: true }));
-      setShowSettings(false);
+      setActiveSettingsMenu(null);
 
       const moviePreset = qualityRef.current === 'auto'
         ? getAutoQualityPreset('movie', autoQualityStateRef.current.index)
@@ -901,31 +1107,55 @@ export const ControlPanel = ({ isIdle }) => {
       player.pause();
       setIsScreenSharing(false);
       setLocalShareSource(null);
+      const isMatroskaFile = selectedMovie.sourceType === 'file'
+        && selectedMovie.container === 'mkv';
+      const isDecodeFailure = error.message?.includes('could not decode a video frame');
       showMediaError(error.name === 'NotAllowedError'
         ? 'The browser blocked movie playback. Press Start movie again'
-        : error.message);
+        : isMatroskaFile && isDecodeFailure
+          ? 'This browser cannot decode the video codec inside this MKV. PairBeam can only stream frames the browser can play; use MP4 (H.264/AAC), WebM, or remux/transcode this file while the WebCodecs fallback is developed.'
+          : error.message);
     }
   };
 
-  const toggleMoviePlayback = async () => {
-    const player = moviePlayerRef.current;
-    if (!player || localShareSource?.kind !== 'movie') return;
-    try {
-      if (player.paused) await player.play();
-      else player.pause();
-    } catch (error) {
-      showMediaError(error.message || 'The movie playback control failed');
+  const getCurrentMovieSubtitleText = (player) => {
+    if (!subtitlesEnabledRef.current) return '';
+    if (selectedSubtitleRef.current?.cues.length) {
+      return getActiveSubtitleText(selectedSubtitleRef.current.cues, player.currentTime);
     }
+    return selectedNativeSubtitleTrackRef.current == null
+      ? ''
+      : getActiveNativeSubtitleText(player, selectedNativeSubtitleTrackRef.current);
   };
 
   const handleMovieProgress = () => {
     const player = moviePlayerRef.current;
     if (!player || localShareSource?.kind !== 'movie') return;
-    setMovieProgress({
+    const subtitleText = getCurrentMovieSubtitleText(player);
+    const state = {
       currentTime: player.currentTime,
       duration: Number.isFinite(player.duration) ? player.duration : selectedMovie?.duration || 0,
       isPlaying: !player.paused,
-    });
+      subtitleText,
+      subtitlesAvailable: Boolean(selectedSubtitleRef.current?.cues.length || nativeSubtitleTracksRef.current.length),
+      subtitlesEnabled: subtitlesEnabledRef.current,
+      subtitleTracks: selectedSubtitleRef.current ? [] : nativeSubtitleTracksRef.current,
+      selectedSubtitleTrack: selectedNativeSubtitleTrackRef.current,
+      audioTracks: movieAudioTracksRef.current,
+      selectedAudioTrack: selectedMovieAudioTrackRef.current,
+    };
+    setMovieProgress(state);
+    setLocalShareSource(current => current?.kind === 'movie' ? { ...current, ...state } : current);
+
+    const now = performance.now();
+    if (
+      now - lastMovieBroadcastAtRef.current >= 1000
+      || subtitleText !== lastBroadcastSubtitleRef.current
+    ) {
+      lastMovieBroadcastAtRef.current = now;
+      lastBroadcastSubtitleRef.current = subtitleText;
+      sendControlMessage({ type: 'movie-state', ...state });
+    }
   };
 
   const sendMovieState = () => {
@@ -935,17 +1165,89 @@ export const ControlPanel = ({ isIdle }) => {
       isPlaying: !player.paused,
       currentTime: player.currentTime,
       duration: Number.isFinite(player.duration) ? player.duration : selectedMovie?.duration || 0,
+      subtitleText: getCurrentMovieSubtitleText(player),
+      subtitlesAvailable: Boolean(selectedSubtitleRef.current?.cues.length || nativeSubtitleTracksRef.current.length),
+      subtitlesEnabled: subtitlesEnabledRef.current,
+      subtitleTracks: selectedSubtitleRef.current ? [] : nativeSubtitleTracksRef.current,
+      selectedSubtitleTrack: selectedNativeSubtitleTrackRef.current,
+      audioTracks: movieAudioTracksRef.current,
+      selectedAudioTrack: selectedMovieAudioTrackRef.current,
     };
     setMovieProgress(current => ({ ...current, ...state }));
     setLocalShareSource(current => current?.kind === 'movie' ? { ...current, ...state } : current);
     sendControlMessage({ type: 'movie-state', ...state });
+    lastMovieBroadcastAtRef.current = performance.now();
+    lastBroadcastSubtitleRef.current = state.subtitleText;
   };
+  sendMovieStateRef.current = sendMovieState;
 
-  const handleMovieSeek = (event) => {
+  useEffect(() => {
+    if (
+      !movieControlRequest
+      || processedMovieControlRequestRef.current === movieControlRequest.id
+      || localShareSource?.kind !== 'movie'
+    ) return;
     const player = moviePlayerRef.current;
     if (!player) return;
-    player.currentTime = Number(event.target.value);
-    handleMovieProgress();
+    processedMovieControlRequestRef.current = movieControlRequest.id;
+
+    const applyRequest = async () => {
+      try {
+        if (movieControlRequest.action === 'play') await player.play();
+        if (movieControlRequest.action === 'pause') player.pause();
+        if (movieControlRequest.action === 'seek' && movieControlRequest.currentTime != null) {
+          player.currentTime = Math.min(movieControlRequest.currentTime, player.duration || movieControlRequest.currentTime);
+        }
+        if (movieControlRequest.action === 'audio-track' && movieControlRequest.trackIndex != null) {
+          if (selectNativeAudioTrack(player, movieControlRequest.trackIndex)) {
+            selectedMovieAudioTrackRef.current = movieControlRequest.trackIndex;
+            setSelectedMovieAudioTrack(movieControlRequest.trackIndex);
+          }
+        }
+        if (movieControlRequest.action === 'subtitles' && movieControlRequest.enabled != null) {
+          subtitlesEnabledRef.current = movieControlRequest.enabled;
+          setSubtitlesEnabled(movieControlRequest.enabled);
+          if (!selectedSubtitleRef.current && selectedNativeSubtitleTrackRef.current != null) {
+            selectNativeSubtitleTrack(
+              player,
+              selectedNativeSubtitleTrackRef.current,
+              movieControlRequest.enabled,
+            );
+          }
+        }
+        if (movieControlRequest.action === 'subtitle-track' && movieControlRequest.trackIndex != null) {
+          if (selectNativeSubtitleTrack(player, movieControlRequest.trackIndex, subtitlesEnabledRef.current)) {
+            selectedNativeSubtitleTrackRef.current = movieControlRequest.trackIndex;
+            setSelectedNativeSubtitleTrack(movieControlRequest.trackIndex);
+          }
+        }
+        sendMovieStateRef.current?.();
+      } catch (error) {
+        showMediaError(error.name === 'NotAllowedError'
+          ? 'The browser blocked remote playback. Press play on the host once, then try again'
+          : error.message || 'The shared movie control failed');
+      }
+    };
+    applyRequest();
+  }, [movieControlRequest, localShareSource?.kind]);
+
+  const handleSubtitleSelection = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const cues = parseSrt(await file.text());
+      if (!cues.length) throw new Error('No valid subtitle cues were found in that SRT file');
+      const subtitle = { name: getMovieDisplayName(file.name), cues };
+      selectedSubtitleRef.current = subtitle;
+      subtitlesEnabledRef.current = true;
+      selectNativeSubtitleTrack(moviePlayerRef.current, -1, false);
+      setSelectedSubtitle(subtitle);
+      setSubtitlesEnabled(true);
+      if (localShareSource?.kind === 'movie') sendMovieState();
+    } catch (error) {
+      showMediaError(error.message || 'The subtitle file could not be read');
+      event.target.value = '';
+    }
   };
 
   const handleLeaveRoom = () => {
@@ -958,13 +1260,17 @@ export const ControlPanel = ({ isIdle }) => {
     autoQualityIndex,
   );
   const screenLimitationReason = screenMetrics.outbound?.qualityLimitationReason || 'none';
+  const handleSettingsMenuOpenChange = (menu, open) => {
+    setActiveSettingsMenu(open ? menu : null);
+    if (open) setShowMovieSourcePicker(false);
+  };
 
   return (
     <TooltipProvider delayDuration={250}>
     <div
       className={`absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-end gap-4 transition-all duration-300 motion-reduce:transition-none hover:!translate-y-0 hover:!opacity-100 sm:bottom-8 ${isIdle || isPresentationMode ? 'pointer-events-none translate-y-6 opacity-0' : 'translate-y-0 opacity-100'}`}
       aria-hidden={isPresentationMode}
-      inert={isPresentationMode ? '' : undefined}
+      inert={isPresentationMode}
     >
       <input
         ref={movieInputRef}
@@ -974,11 +1280,19 @@ export const ControlPanel = ({ isIdle }) => {
         onChange={handleMovieSelection}
         aria-label="Choose a movie from your computer"
       />
+      <input
+        ref={subtitleInputRef}
+        type="file"
+        accept=".srt,application/x-subrip,text/plain"
+        className="sr-only"
+        onChange={handleSubtitleSelection}
+        aria-label="Choose an SRT subtitle file"
+      />
       <video
         ref={moviePlayerRef}
         className="pointer-events-none absolute size-px opacity-0"
         playsInline
-        preload="metadata"
+        preload="auto"
         onTimeUpdate={handleMovieProgress}
         onPlay={sendMovieState}
         onPause={sendMovieState}
@@ -987,7 +1301,7 @@ export const ControlPanel = ({ isIdle }) => {
         aria-hidden="true"
       />
 
-      {showMovieSourcePicker && localShareSource?.kind !== 'movie' && !showSettings ? (
+      {showMovieSourcePicker && localShareSource?.kind !== 'movie' && !activeSettingsMenu ? (
         <aside className="absolute bottom-20 left-1/2 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl" aria-label="Choose a movie source">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -1031,13 +1345,13 @@ export const ControlPanel = ({ isIdle }) => {
             </Button>
           </form>
           <p id="direct-media-url-help" className="text-[11px] leading-5 text-zinc-600">
-            Direct MP4/WebM-style links need media CORS access. YouTube, Netflix, login-protected pages, and ordinary webpage links are not supported; share their browser tab with audio instead.
+            PairBeam first tries a one-download WebRTC relay. If CORS prevents relay, the other participant&apos;s browser loads the exact URL and PairBeam synchronizes playback. Do not use a link containing a token or secret you do not want that participant to see. YouTube, Netflix, login-protected pages, and ordinary webpage links are not supported.
           </p>
           <p className="sr-only" aria-live="polite">{isLoadingDirectMedia ? 'Loading direct video URL.' : ''}</p>
         </aside>
       ) : null}
 
-      {selectedMovie && localShareSource?.kind !== 'movie' && !showSettings && !showMovieSourcePicker ? (
+      {selectedMovie && localShareSource?.kind !== 'movie' && !activeSettingsMenu && !showMovieSourcePicker ? (
         <aside className="absolute bottom-20 left-1/2 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl" aria-label="Movie ready to share">
           <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-teal-300/10 text-teal-200">
             <Film className="size-5" />
@@ -1045,9 +1359,16 @@ export const ControlPanel = ({ isIdle }) => {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-zinc-100">{selectedMovie.name}</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              {formatMediaTime(selectedMovie.duration)} · {selectedMovie.sourceType === 'url' ? 'direct link, not uploaded to PairBeam' : 'stays on this device'}
+              {formatMediaTime(selectedMovie.duration)} · {selectedMovie.sourceType === 'url'
+                ? selectedMovie.deliveryMode === 'direct'
+                  ? 'both participants load this link directly'
+                  : 'host relays this link over WebRTC'
+                : 'stays on this device'}
             </p>
           </div>
+          <Button variant="ghost" size="icon" onClick={() => subtitleInputRef.current?.click()} aria-label="Add SRT subtitles">
+            <Captions className="size-4" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={clearMovieSource}>Cancel</Button>
           <Button variant="active" size="sm" onClick={startMovieShare}>
             <Play className="size-4" />
@@ -1056,201 +1377,11 @@ export const ControlPanel = ({ isIdle }) => {
         </aside>
       ) : null}
 
-      {localShareSource?.kind === 'movie' && !showSettings ? (
-        <aside className="absolute bottom-20 left-1/2 flex w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl" aria-label="Movie playback controls">
-          <Button variant="active" size="icon" onClick={toggleMoviePlayback} aria-label={movieProgress.isPlaying ? 'Pause movie' : 'Play movie'}>
-            {movieProgress.isPlaying ? <Pause className="size-4" /> : <Play className="size-4" />}
-          </Button>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-              <span className="truncate font-medium text-zinc-200">{localShareSource.name}</span>
-              <span className="shrink-0 font-mono text-zinc-500">
-                {formatMediaTime(movieProgress.currentTime)} / {formatMediaTime(movieProgress.duration)}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max={Math.max(movieProgress.duration, 0)}
-              step="0.1"
-              value={Math.min(movieProgress.currentTime, movieProgress.duration || 0)}
-              onChange={handleMovieSeek}
-              className="h-2 w-full cursor-pointer accent-teal-300"
-              aria-label="Movie position"
-            />
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => stopScreenShare()}>Stop</Button>
-        </aside>
-      ) : null}
-      
-      {/* Settings Menu Popup */}
-      {showSettings && (
-        <aside className="absolute bottom-20 left-1/2 mb-2 flex max-h-[min(42rem,calc(100vh-7rem))] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-5 overflow-y-auto rounded-2xl border border-white/10 bg-[#111719]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl" aria-label="Call settings">
-          <h3 className="border-b border-white/[0.08] pb-2 text-xs font-semibold tracking-wide text-zinc-400">Device settings</h3>
-
-          {localShareSource?.kind === 'movie' ? (
-            <div className="flex items-center gap-3 rounded-xl border border-teal-300/15 bg-teal-300/[0.06] p-2.5" role="status">
-              <Film className="size-4 shrink-0 text-teal-200" />
-              <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">
-                {movieProgress.isPlaying ? 'Playing' : 'Paused'} · {localShareSource.name}
-              </span>
-              <Button variant="ghost" size="sm" onClick={toggleMoviePlayback}>
-                {movieProgress.isPlaying ? 'Pause' : 'Play'}
-              </Button>
-            </div>
-          ) : selectedMovie ? (
-            <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] p-2.5" role="status">
-              <Film className="size-4 shrink-0 text-zinc-400" />
-              <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">
-                Ready · {selectedMovie.name}
-              </span>
-              <Button variant="active" size="sm" onClick={startMovieShare}>
-                {isScreenSharing ? 'Replace' : 'Start'}
-              </Button>
-            </div>
-          ) : null}
-          
-          <div className="flex flex-col gap-2">
-            <label htmlFor="microphone-device" className="text-sm text-gray-400 flex items-center gap-2"><Mic size={14}/> Microphone</label>
-            <select 
-              id="microphone-device"
-              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
-              value={selectedAudioDevice}
-              onChange={handleAudioDeviceChange}
-            >
-              {audioDevices.length === 0 && <option value="">Loading...</option>}
-              {audioDevices.map((device) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label || `Microphone ${device.deviceId.substring(0, 5)}...`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <h3 className="mt-1 border-b border-white/[0.08] pb-2 text-xs font-semibold tracking-wide text-zinc-400">Playback volume</h3>
-
-          <div className="flex flex-col gap-2" aria-label="Incoming audio volume controls">
-            <VolumeControl
-              id="participant-playback-volume"
-              icon={UserRound}
-              label="Participant voice"
-              description="The other participant's microphone on this device."
-              value={participantVolume}
-              onChange={setParticipantVolume}
-            />
-            <VolumeControl
-              id="screen-playback-volume"
-              icon={MonitorPlay}
-              label="Shared screen"
-              description="Audio captured with the other participant's screen."
-              value={screenVolume}
-              onChange={setScreenVolume}
-            />
-            <VolumeControl
-              id="movie-playback-volume"
-              icon={Film}
-              label="Shared movie"
-              description="Audio from a movie shared by the other participant."
-              value={movieVolume}
-              onChange={setMovieVolume}
-            />
-          </div>
-
-          <h3 className="mt-1 border-b border-white/[0.08] pb-2 text-xs font-semibold tracking-wide text-zinc-400">Shared content</h3>
-          
-          <div className="flex flex-col gap-2">
-            <label htmlFor="shared-content-quality" className="text-sm text-gray-400">Resolution & FPS</label>
-            <select 
-              id="shared-content-quality"
-              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
-              value={quality}
-              onChange={handleQualityChange}
-            >
-              {Object.entries(QUALITY_PRESETS).map(([key, value]) => (
-                <option key={key} value={key}>{value.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label htmlFor="shared-content-type" className="text-sm text-gray-400">Content Type</label>
-            <select 
-              id="shared-content-type"
-              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
-              value={contentType}
-              onChange={handleContentTypeChange}
-              disabled={localShareSource?.kind === 'movie'}
-            >
-              <option value="motion">Movie/Gaming (Motion)</option>
-              <option value="detail">Text/Coding (Detail)</option>
-            </select>
-          </div>
-
-          <div aria-live="polite" className="rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-2.5 text-[11px] leading-5 text-zinc-500">
-            {quality === 'auto' && (
-              <div className="flex items-center justify-between gap-3">
-                <span>Auto target</span>
-                <span className="font-medium text-zinc-300">{activeAutoPreset.label}</span>
-              </div>
-            )}
-            {isScreenSharing ? (
-              <>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Captured</span>
-                  <span className="font-medium text-zinc-300">{formatVideoMetrics(screenMetrics.capture)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Sending</span>
-                  <span className="font-medium text-zinc-300">{formatVideoMetrics(screenMetrics.outbound)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>{LIMITATION_COPY[screenLimitationReason] || LIMITATION_COPY.other}</span>
-                  <span className="font-medium text-zinc-300">
-                    {screenMetrics.outbound?.sendBitrateKbps
-                      ? `${(screenMetrics.outbound.sendBitrateKbps / 1000).toFixed(1)} Mbps`
-                      : 'Measuring…'}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <p>The browser may return a lower resolution or frame rate than requested.</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label htmlFor="desktop-audio-source" className="text-sm text-gray-400">Linux desktop audio fallback</label>
-            <select
-              id="desktop-audio-source"
-              className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:cursor-not-allowed disabled:opacity-50"
-              value={selectedDesktopAudioDevice}
-              onChange={(event) => setSelectedDesktopAudioDevice(event.target.value)}
-              disabled={desktopAudioDevices.length === 0}
-            >
-              <option value="">Use the browser share picker</option>
-              {desktopAudioDevices.map(device => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label || 'Desktop audio monitor'}
-                </option>
-              ))}
-            </select>
-            <p className="text-[11px] leading-5 text-zinc-600">
-              {desktopAudioDevices.length > 0
-                ? 'Optional: use a PipeWire/PulseAudio monitor when the share picker returns video without audio.'
-                : 'No PipeWire/PulseAudio monitor source is exposed to this browser.'}
-            </p>
-          </div>
-
-          <div role="status" className="rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-[11px] leading-5 text-zinc-500">
-            {SCREEN_AUDIO_COPY[screenAudioStatus]}
-          </div>
-        </aside>
-      )}
-
       {/* Camera Error Banner */}
       {mediaError && (
         <div role="alert" className="absolute bottom-20 left-1/2 flex w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 items-start gap-3 rounded-xl border border-red-400/25 bg-red-950/95 py-2 pl-4 pr-2 text-sm text-red-100 shadow-xl backdrop-blur-md">
           <p className="min-w-0 flex-1 py-1.5">
-            Media error: {mediaError}. Check browser permissions and the selected device.
+            Media error: {mediaError}
           </p>
           <Button variant="ghost" size="icon" onClick={dismissMediaError} aria-label="Dismiss media error" className="text-red-100 hover:bg-white/10">
             <X className="size-4" />
@@ -1259,55 +1390,259 @@ export const ControlPanel = ({ isIdle }) => {
       )}
 
       {/* Control Bar */}
-      <div className="flex max-w-[calc(100vw-1rem)] items-center gap-1.5 overflow-x-auto rounded-2xl border border-white/10 bg-[#111719]/90 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:gap-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={toggleMute} aria-label={isMuted ? 'Turn microphone on' : 'Mute microphone'}>
-              {isMuted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{isMuted ? 'Turn microphone on' : 'Mute microphone'}</TooltipContent>
-        </Tooltip>
+      <div className="flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#111719]/90 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:gap-2 sm:p-2">
+        <div className="flex items-center gap-px" role="group" aria-label="Microphone controls">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button className="size-10 rounded-r-md sm:size-11" variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={toggleMute} aria-label={isMuted ? 'Turn microphone on' : 'Mute microphone'}>
+                {isMuted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isMuted ? 'Turn microphone on' : 'Mute microphone'}</TooltipContent>
+          </Tooltip>
+          <Popover
+            open={activeSettingsMenu === 'microphone'}
+            onOpenChange={open => handleSettingsMenuOpenChange('microphone', open)}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                className="h-10 w-6 rounded-l-md px-0 sm:h-11 sm:w-7"
+                variant={activeSettingsMenu === 'microphone' ? 'active' : 'secondary'}
+                size="icon"
+                aria-label="Open microphone settings"
+              >
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" aria-labelledby="microphone-settings-title">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 id="microphone-settings-title" className="text-sm font-semibold text-zinc-100">Microphone</h3>
+                  <p className="mt-0.5 text-[11px] text-zinc-500">Input and participant voice</p>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-medium ${isMuted ? 'bg-red-400/10 text-red-200' : 'bg-teal-300/10 text-teal-200'}`}>
+                  {isMuted ? 'Muted' : 'On'}
+                </span>
+              </div>
+              <label htmlFor="microphone-device" className="block text-xs font-medium text-zinc-400">
+                Microphone input
+                <select
+                  id="microphone-device"
+                  className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-xs text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
+                  value={selectedAudioDevice}
+                  onChange={handleAudioDeviceChange}
+                >
+                  {audioDevices.length === 0 ? <option value="">No microphone found</option> : null}
+                  {audioDevices.map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Microphone ${device.deviceId.substring(0, 5)}…`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="my-3 h-px bg-white/[0.08]" />
+              <VolumeControl
+                id="participant-playback-volume"
+                icon={UserRound}
+                label="Participant voice"
+                description="The other participant's microphone on this device."
+                value={participantVolume}
+                onChange={setParticipantVolume}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant={isCameraOff ? 'destructive' : 'secondary'} size="icon" onClick={toggleCamera} aria-label={isCameraOff ? 'Turn camera on' : 'Turn camera off'}>
-              {isCameraOff ? <VideoOff className="size-5" /> : <Video className="size-5" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{isCameraOff ? 'Turn camera on' : 'Turn camera off'}</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-px" role="group" aria-label="Camera controls">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button className="size-10 rounded-r-md sm:size-11" variant={isCameraOff ? 'destructive' : 'secondary'} size="icon" onClick={toggleCamera} aria-label={isCameraOff ? 'Turn camera on' : 'Turn camera off'}>
+                {isCameraOff ? <VideoOff className="size-5" /> : <Video className="size-5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isCameraOff ? 'Turn camera on' : 'Turn camera off'}</TooltipContent>
+          </Tooltip>
+          <Popover
+            open={activeSettingsMenu === 'camera'}
+            onOpenChange={open => handleSettingsMenuOpenChange('camera', open)}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                className="h-10 w-6 rounded-l-md px-0 sm:h-11 sm:w-7"
+                variant={activeSettingsMenu === 'camera' ? 'active' : 'secondary'}
+                size="icon"
+                aria-label="Open camera settings"
+              >
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" aria-labelledby="camera-settings-title">
+              <div className="mb-3">
+                <h3 id="camera-settings-title" className="text-sm font-semibold text-zinc-100">Camera</h3>
+                <p className="mt-0.5 text-[11px] text-zinc-500">Choose the camera used in this call</p>
+              </div>
+              <label htmlFor="camera-device" className="block text-xs font-medium text-zinc-400">
+                Camera input
+                <select
+                  id="camera-device"
+                  className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-xs text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
+                  value={selectedVideoDevice}
+                  onChange={handleVideoDeviceChange}
+                >
+                  {videoDevices.length === 0 ? <option value="">No camera found</option> : null}
+                  {videoDevices.map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${device.deviceId.substring(0, 5)}…`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+                Changing this while the camera is on switches immediately. When off, it is used next time you enable video.
+              </p>
+            </PopoverContent>
+          </Popover>
+        </div>
 
-        <div className="mx-1 h-7 w-px bg-white/10" />
+        <div className="mx-0.5 h-7 w-px bg-white/10 sm:mx-1" />
+
+        <div className="flex items-center gap-px" role="group" aria-label="Screen sharing controls">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="size-10 rounded-r-md sm:size-11"
+                variant={localShareSource?.kind === 'screen' ? 'active' : 'secondary'}
+                size="icon"
+                onClick={toggleScreenShare}
+                disabled={localShareSource?.kind === 'movie'}
+                aria-label={localShareSource?.kind === 'movie'
+                  ? 'Stop the movie before sharing your screen'
+                  : localShareSource?.kind === 'screen'
+                    ? 'Stop sharing your screen'
+                    : 'Share your screen'}
+              >
+                <MonitorUp className="size-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{localShareSource?.kind === 'movie' ? 'Stop the movie first' : localShareSource?.kind === 'screen' ? 'Stop sharing your screen' : 'Share your screen'}</TooltipContent>
+          </Tooltip>
+          <Popover
+            open={activeSettingsMenu === 'screen'}
+            onOpenChange={open => handleSettingsMenuOpenChange('screen', open)}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                className="h-10 w-6 rounded-l-md px-0 sm:h-11 sm:w-7"
+                variant={activeSettingsMenu === 'screen' ? 'active' : 'secondary'}
+                size="icon"
+                disabled={localShareSource?.kind === 'movie'}
+                aria-label="Open screen sharing settings"
+              >
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="center" side="top" aria-labelledby="screen-settings-title">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h3 id="screen-settings-title" className="text-sm font-semibold text-zinc-100">Screen sharing</h3>
+                  <p className="mt-0.5 text-[11px] text-zinc-500">Quality, content, and audio</p>
+                </div>
+                {localShareSource?.kind === 'screen' ? (
+                  <span className="rounded-full bg-teal-300/10 px-2 py-1 text-[10px] font-medium text-teal-200">Live</span>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label htmlFor="shared-content-quality" className="text-xs font-medium text-zinc-400">
+                  Quality
+                  <select
+                    id="shared-content-quality"
+                    className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-2.5 text-xs text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
+                    value={quality}
+                    onChange={handleQualityChange}
+                  >
+                    {Object.entries(QUALITY_PRESETS).map(([key, value]) => (
+                      <option key={key} value={key}>{value.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label htmlFor="shared-content-type" className="text-xs font-medium text-zinc-400">
+                  Content
+                  <select
+                    id="shared-content-type"
+                    className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-2.5 text-xs text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50"
+                    value={contentType}
+                    onChange={handleContentTypeChange}
+                    disabled={localShareSource?.kind === 'movie'}
+                  >
+                    <option value="motion">Motion</option>
+                    <option value="detail">Text / detail</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="my-3 h-px bg-white/[0.08]" />
+              <VolumeControl
+                id="screen-playback-volume"
+                icon={MonitorPlay}
+                label="Shared screen volume"
+                description="Incoming audio from the participant's screen on this device."
+                value={screenVolume}
+                onChange={setScreenVolume}
+              />
+
+              <div className="my-3 h-px bg-white/[0.08]" />
+              <label htmlFor="desktop-audio-source" className="block text-xs font-medium text-zinc-400">
+                Screen audio source
+                <select
+                  id="desktop-audio-source"
+                  className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-xs text-white outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50"
+                  value={selectedDesktopAudioDevice}
+                  onChange={event => setSelectedDesktopAudioDevice(event.target.value)}
+                  disabled={desktopAudioDevices.length === 0}
+                >
+                  <option value="">Browser share picker</option>
+                  {desktopAudioDevices.map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || 'Desktop audio monitor'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-1.5 text-[11px] leading-5 text-zinc-600">
+                {desktopAudioDevices.length > 0
+                  ? 'A Linux monitor captures all desktop output and can cause call echo.'
+                  : 'No PipeWire/PulseAudio monitor is exposed; use the browser picker audio option.'}
+              </p>
+              <p role="status" className="mt-2 rounded-lg bg-white/[0.035] px-2.5 py-2 text-[11px] leading-5 text-zinc-500">
+                {SCREEN_AUDIO_COPY[screenAudioStatus]}
+              </p>
+
+              <details className="mt-2 rounded-lg border border-white/[0.08] bg-white/[0.025] px-2.5 py-2 text-[11px] text-zinc-500">
+                <summary className="cursor-pointer select-none font-medium text-zinc-400">Quality details</summary>
+                <div className="mt-2 space-y-1.5" aria-live="polite">
+                  {quality === 'auto' ? (
+                    <div className="flex justify-between gap-3"><span>Auto target</span><span className="text-zinc-300">{activeAutoPreset.label}</span></div>
+                  ) : null}
+                  <div className="flex justify-between gap-3"><span>Captured</span><span className="text-right text-zinc-300">{formatVideoMetrics(screenMetrics.capture)}</span></div>
+                  <div className="flex justify-between gap-3"><span>Sending</span><span className="text-right text-zinc-300">{formatVideoMetrics(screenMetrics.outbound)}</span></div>
+                  <div className="flex justify-between gap-3"><span>{LIMITATION_COPY[screenLimitationReason] || LIMITATION_COPY.other}</span><span className="text-zinc-300">{screenMetrics.outbound?.sendBitrateKbps ? `${(screenMetrics.outbound.sendBitrateKbps / 1000).toFixed(1)} Mbps` : 'Measuring…'}</span></div>
+                </div>
+              </details>
+            </PopoverContent>
+          </Popover>
+        </div>
 
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant={localShareSource?.kind === 'screen' ? 'active' : 'secondary'}
-              size="icon"
-              onClick={toggleScreenShare}
-              disabled={localShareSource?.kind === 'movie'}
-              aria-label={localShareSource?.kind === 'movie'
-                ? 'Stop the movie before sharing your screen'
-                : localShareSource?.kind === 'screen'
-                  ? 'Stop sharing your screen'
-                  : 'Share your screen'}
-            >
-              <MonitorUp className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{localShareSource?.kind === 'movie' ? 'Stop the movie first' : localShareSource?.kind === 'screen' ? 'Stop sharing your screen' : 'Share your screen'}</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
+              className="size-10 sm:size-11"
               variant={localShareSource?.kind === 'movie' ? 'active' : 'secondary'}
               size="icon"
               onClick={() => {
                 if (localShareSource?.kind === 'movie') stopScreenShare();
                 else {
-                  setShowSettings(false);
+                  setActiveSettingsMenu(null);
                   setShowMovieSourcePicker(value => !value);
                 }
               }}
@@ -1320,18 +1655,9 @@ export const ControlPanel = ({ isIdle }) => {
           <TooltipContent>{localShareSource?.kind === 'movie' ? 'Stop movie' : 'Share a movie'}</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant={showSettings ? 'active' : 'ghost'} size="icon" onClick={() => setShowSettings(value => !value)} aria-label="Open call settings" aria-expanded={showSettings}>
-              <Settings className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Call settings</TooltipContent>
-        </Tooltip>
+        <div className="mx-0.5 h-7 w-px bg-white/10 sm:mx-1" />
 
-        <div className="mx-1 h-7 w-px bg-white/10" />
-
-        <Button variant="destructive" onClick={handleLeaveRoom} className="px-3 sm:px-4">
+        <Button variant="destructive" onClick={handleLeaveRoom} className="size-10 px-0 sm:h-11 sm:w-auto sm:px-4">
           <PhoneOff className="size-5" />
           <span className="hidden sm:inline">Leave</span>
         </Button>

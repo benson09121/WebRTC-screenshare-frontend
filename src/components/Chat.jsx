@@ -137,9 +137,10 @@ export const Chat = ({ isIdle }) => {
     <>
       <Button
         ref={launcherRef}
+        data-idle-ignore="true"
         variant="secondary"
         onClick={() => setIsChatOpen(true)}
-        className={`fixed bottom-5 right-5 z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
+        className={`fixed bottom-20 right-3 z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none sm:bottom-5 sm:right-5 ${launcherHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
         aria-label={unreadCount > 0 ? `Open chat, ${unreadCount} unread messages` : 'Open chat'}
         aria-hidden={launcherHidden}
         tabIndex={launcherHidden ? -1 : undefined}
@@ -155,7 +156,8 @@ export const Chat = ({ isIdle }) => {
 
       {showNotification && !isChatOpen ? (
         <div
-          className="fixed bottom-[4.75rem] right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:right-5"
+          data-idle-ignore="true"
+          className="fixed bottom-[8.5rem] right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:bottom-[4.75rem] sm:right-5"
           role="status"
           aria-live="polite"
         >
@@ -185,12 +187,13 @@ export const Chat = ({ isIdle }) => {
       ) : null}
 
       <aside
+        data-idle-ignore="true"
         className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111719]/97 shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${panelPlacement} ${isChatOpen ? 'translate-y-0 scale-100 opacity-100' : 'pointer-events-none translate-y-2 scale-[0.98] opacity-0'}`}
         role="dialog"
         aria-labelledby="room-chat-title"
         aria-describedby="room-chat-description"
         aria-hidden={!isChatOpen}
-        inert={!isChatOpen ? '' : undefined}
+        inert={!isChatOpen}
       >
         <header className="flex min-h-[4.5rem] items-center justify-between gap-3 border-b border-white/[0.08] px-4">
           <div className="min-w-0">

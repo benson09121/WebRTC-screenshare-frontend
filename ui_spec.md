@@ -24,7 +24,7 @@ This document outlines the UI behaviors and conditions implemented.
 
 ## 6. Fullscreen Auto-hide (Global Idle State)
 - **Condition:** Triggers 3 seconds after no mouse movement while in Fullscreen mode.
-- **Behavior:** Hides the main Control Panel, the Fullscreen toggle buttons, the top Room Information bar, and all in-page camera previews. The screen becomes entirely devoted to the shared stream. Opening the Chat prevents the idle state from triggering.
+- **Behavior:** Hides the main Control Panel, the Fullscreen toggle buttons, the top Room Information bar, and all in-page camera previews. The screen becomes entirely devoted to the shared stream. Chat remains interactive, but pointer movement and typing inside it do not wake the underlying media controls.
 
 ## 7. Fullscreen Chat Accessibility
 - **Condition:** The participant opens Chat while a screen share is fullscreen.
@@ -53,7 +53,10 @@ This document outlines the UI behaviors and conditions implemented.
 - **Final share ends:** Switch to the participant camera view.
 - **Camera unavailable or off:** Render the participant user-icon placeholder instead of retaining the final shared frame.
 - **Remote cleanup:** Hide the remote screen immediately when `screen-toggle` reports that sharing stopped, while retaining its negotiated receiver track so a later share can resume without renegotiation or a stuck loading state.
-- **Playback volume:** Keep participant microphone playback separate from shared-content playback. Call settings provide local-only 0–100% controls for participant voice, shared-screen audio, and shared-movie audio; values remain in memory and reset when the room ends or the page reloads.
+- **Playback volume:** Keep participant microphone playback separate from shared-content playback. Place the local-only participant voice slider in the microphone arrow menu, shared-screen audio in the screen-share arrow menu, and shared-movie audio beside the movie timeline. Values remain in memory and reset when the room ends or the page reloads.
+- **Scoped settings:** Use compact, keyboard-accessible popovers anchored to down-arrow buttons beside microphone, camera, and screen share. The camera menu owns camera selection; microphone owns input selection and participant voice; screen share owns quality, content type, outgoing desktop-audio source, incoming screen volume, and collapsible live metrics. Do not render a global settings panel over the stage.
+- **Shared movie player:** Render the same branded player controls for the host and viewer. Either participant can request play, pause, seek, subtitle visibility, or an available audio-track change; the browser holding the source remains the timeline authority and publishes the resulting state.
+- **Subtitles:** External SRT files remain on the host device. Parse cues locally, send only the currently active cue over the data channel, and render it as inert text over both movie views.
 
 ## 11. Component System
 - **Foundation:** Tailwind CSS v4 with local shadcn-style components backed by Radix UI primitives.
@@ -101,9 +104,10 @@ This document outlines the UI behaviors and conditions implemented.
 - **Share end:** If the selected screen ends and the view falls back to the participant camera, presentation mode exits automatically.
 - **Chat:** In presentation mode, use the same responsive chat behavior as fullscreen: a docked rail that reserves stage width on larger screens and a bounded bottom sheet on narrow screens.
 - **Escape priority:** When chat is open, Escape closes chat first. When chat is closed, Escape exits presentation mode. Browser fullscreen remains controlled by the browser's fullscreen behavior.
-- **Fit:** Use `object-contain` so the complete shared surface remains visible with possible letterboxing.
-- **Fill:** Use `object-cover` so the shared surface fills the stage; edges may be cropped when aspect ratios differ.
+- **Fit:** Preserve the source's natural display aspect ratio so the complete shared surface remains visible with symmetrical black letterboxing or pillarboxing.
+- **Crop:** Use `object-cover` only when the user explicitly chooses to fill the stage; edges may be cropped when aspect ratios differ.
 - **100%:** Render the video at its decoded intrinsic dimensions with no CSS downscaling. Place it in a two-axis scrollable viewport so oversized screens can be panned without clipping inaccessible edges.
+- **Shared-content background:** Screen shares and shared movies use true black (`#000`) behind the media in normal, presentation, and fullscreen modes.
 - **Source changes:** Reset sizing to Fit when the selected local/remote source changes or no screen remains.
 - **Accessibility:** Use keyboard-navigable Tabs for sizing, `aria-pressed` for presentation state, visible focus rings, and a polite live region for mode changes.
 
@@ -117,11 +121,11 @@ This document outlines the UI behaviors and conditions implemented.
 ## 19. Watch Together
 
 - **Entry:** A dedicated film control opens a compact source chooser for either a local video file or a direct browser-playable HTTP(S) media URL. Local files are never uploaded to signaling or persisted.
-- **Direct links:** Validate through the same hidden media player before offering Start movie. Direct URLs must be reachable without login and permit cross-origin media use. Never send the URL, query parameters, or credentials to signaling or the participant; share only a bounded display name, duration, and playback state.
+- **Direct links:** Validate through the same hidden media player before offering Start movie. Reject URL-embedded usernames and passwords. First request anonymous CORS playback so the host can capture and relay one decoded stream through WebRTC. If CORS capture fails but ordinary media playback succeeds, use synchronized direct mode: send the exact URL only over the encrypted peer data channel, let both browsers fetch it, and synchronize playback state and controls. Never send the URL to signaling or persist it. Clearly disclose that query parameters, including signed access tokens, are visible to the participant in direct mode.
 - **Provider pages:** YouTube, Netflix, and ordinary webpage links are not direct media sources. Explain this distinction and direct the user to browser-tab sharing with audio.
 - **Preparation:** Show the movie name and duration with an explicit Start movie action. Starting while another local source is active is an explicit Replace share action.
-- **Transport:** A compatible media element is captured into the existing shared-content video sender and the dedicated shared-content audio sender. Camera and microphone remain separate.
-- **Playback:** The host gets play/pause, seek, progress, and stop controls. The viewer sees the live result and a quiet Playing/Paused by host status rather than a second unsynchronized player.
+- **Transport:** Relay mode captures a compatible media element into the existing shared-content video sender and dedicated shared-content audio sender. Synchronized direct mode sends no movie media through WebRTC; each browser downloads the source URL independently. Camera and microphone remain separate in both modes.
+- **Playback:** Both participants use the shared player. Commands travel through the peer data channel; the source owner remains the timeline authority and publishes the resulting state. In synchronized direct mode, the receiving player corrects meaningful drift while avoiding constant seek jitter.
 - **Source selection:** Existing local view choice remains authoritative. Labels become Your movie or Their movie when the corresponding shared source is a local file.
 - **End behavior:** Reaching the end, stopping, replacing the movie, or leaving stops captured tracks, revokes the object URL, clears file metadata, and returns affected viewers through the existing share fallback rules.
 - **Quality:** Auto uses movie-specific 24/30fps profiles. Manual screen presets remain available, but the source frame rate remains browser and file dependent.
