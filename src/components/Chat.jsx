@@ -22,6 +22,7 @@ export const Chat = ({ isIdle }) => {
     connected,
     isChatOpen,
     isFullscreen,
+    isPresentationMode,
     notificationSoundEnabled,
     sendMessage,
     setIsChatOpen,
@@ -125,7 +126,8 @@ export const Chat = ({ isIdle }) => {
     if (nearBottom) setShowJumpToLatest(false);
   };
 
-  const panelPlacement = isFullscreen
+  const usesFocusedStage = isFullscreen || isPresentationMode;
+  const panelPlacement = usesFocusedStage
     ? 'inset-x-3 bottom-3 h-[min(58dvh,34rem)] md:inset-y-3 md:left-auto md:right-3 md:h-auto md:w-[min(22rem,32vw)]'
     : 'inset-x-3 bottom-20 h-[min(66dvh,32rem)] sm:left-auto sm:right-5 sm:w-[22rem]';
 

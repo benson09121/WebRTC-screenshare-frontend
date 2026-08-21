@@ -26,17 +26,56 @@ This roadmap keeps the product database-free. Rooms remain ephemeral, signaling 
 - [x] Add signaling reconnection with bounded exponential backoff.
 - [x] Show “participant left” and allow waiting for them to rejoin the same ephemeral room.
 - [x] Surface whether the selected connection is direct or relayed through TURN.
+- [x] Separate transport health from browser encoder limits so CPU pressure is no longer mislabeled as a bad connection.
+- [x] Name the active encoder limitation in the health control: device/CPU, upload bandwidth, or another browser adaptation reason.
+- [x] Keep captured screen audio live when the microphone is muted, unmuted, or switched.
+- [x] Request system and window audio with the correct top-level `getDisplayMedia()` options and report when the chosen source returns no audio track.
+- [x] Add standard video Picture-in-Picture controls for the participant, local camera, and active main video.
+- [x] Detect PipeWire/PulseAudio monitor inputs and offer an explicit Linux desktop-audio fallback when the browser exposes one.
 - [ ] Configure production TURN credentials in the deployment environment.
 
 ## Next — screen-share experience
 
-- [ ] Add an “Auto” quality mode that reacts to outgoing bitrate and encoder limitation reasons.
-- [ ] Display the actual captured resolution and FPS after browser constraints are applied.
-- [ ] Add a presentation mode that hides camera previews and nonessential controls.
-- [ ] Add a fit/fill control and optional 100% pixel view for text-heavy shares.
+- [x] Add an “Auto” quality mode that reacts to outgoing bitrate and encoder limitation reasons.
+- [x] Display the actual captured and encoded resolution, FPS, and outgoing bitrate after browser constraints are applied.
+- [x] Add a presentation mode that hides camera previews and nonessential controls while keeping chat and a clear exit available.
+- [x] Add fit/fill controls and a scrollable 100% pixel view for text-heavy shares.
 - [ ] Add a short confirmation before replacing an existing local screen source.
-- [ ] Add a clear system-audio state because browser and operating-system support varies.
+- [x] Add a clear system-audio state because browser and operating-system support varies.
 - [ ] Add keyboard shortcuts for mute, camera, screen share, chat, and fullscreen.
+
+## Investigation — connection limits, desktop video, and Linux audio
+
+### “Connection limited”
+
+- WebRTC's `qualityLimitationReason` describes the outbound encoder reducing resolution or frame rate because of `cpu`, `bandwidth`, or `other`; it is not, by itself, proof that the peer connection is failing. See the [W3C WebRTC statistics definition](https://w3c.github.io/webrtc-stats/#dom-rtcoutboundrtpstreamstats-qualitylimitationreason).
+- Testing both participants on one PC can create legitimate CPU/GPU pressure because that machine captures, encodes, decodes, and renders both ends. Test again on two physical devices before treating a same-PC CPU warning as a production-network defect.
+- Packet loss and round-trip time remain the transport-health inputs. Encoder pressure is now displayed as a separate, specific warning.
+- [ ] Add health-indicator quality-warning hysteresis so a transient browser limitation does not make the global status flicker.
+- [x] Implement the planned Auto preset: reduce frame rate first for text/detail shares and resolution first for motion shares when limitations persist.
+- [x] Add separate Auto-quality hysteresis so a single two-second sample cannot change the selected encoding profile.
+- Auto waits for sustained encoder pressure before stepping down, reacts faster when bandwidth pressure also produces constrained outgoing bitrate, and requires a longer healthy period before stepping back up.
+- [ ] Add a locally generated diagnostics export with codec, encoder, candidate path, and limitation-duration counters.
+
+### Picture-in-Picture
+
+- The standard video Picture-in-Picture API creates a browser-managed floating video window outside the page and requires a user click. Support is browser-dependent; see [MDN's Picture-in-Picture API documentation](https://developer.mozilla.org/en-US/docs/Web/API/Picture-in-Picture_API).
+- PairBeam now exposes PiP on the main video, the participant camera shown over a shared screen, and the local camera preview when the browser supports `requestPictureInPicture()`.
+- A website cannot force a normal arbitrary window to remain above every desktop application. The browser/desktop window manager owns the PiP surface and its always-on-top behavior.
+- [ ] Verify the native Firefox PiP affordance and Safari behavior, where the standard programmable button may be unavailable.
+- [ ] Evaluate Document Picture-in-Picture only if controls or chat are later required inside the floating window; keep standard video PiP as the compatibility path.
+
+### Linux screen-share audio
+
+- `getDisplayMedia({ audio: true })` returns audio only when the chosen surface, browser, and operating system support it. `systemAudio` and `windowAudio` are hints; the browser picker and user permission remain authoritative. See [MDN's `getDisplayMedia()` reference](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia).
+- Chromium added the `windowAudio` option in Chrome 141, but support remains partial and does not guarantee per-application capture on every Linux setup. See the [Chrome 141 release notes](https://developer.chrome.com/release-notes/141#windowaudio_for_getdisplaymedia).
+- Chromium contains a Linux `PulseaudioLoopbackForScreenShare` feature, but it is disabled by default in current source. When enabled by the user, it can expose system loopback capture without installing a virtual-cable application. See [Chromium's media feature definition](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/base/media_switches.cc).
+- No-virtual-cable Chrome test path: enable `chrome://flags/#pulseaudio-loopback-for-screen-share`, relaunch Chrome, start a share, and enable audio in the browser picker. If the picker still returns video only, PairBeam can use a physical-output `Monitor` source exposed in call settings.
+- PipeWire/PulseAudio often exposes physical output monitors as audio inputs. PairBeam can now use a selected monitor source if the browser exposes it. This can capture the entire output, including the other participant, so echo is possible.
+- A community implementation has successfully used Linux monitor sources and browser-side track replacement, but application-only routing still requires PipeWire/PulseAudio routing or a browser-native window-audio implementation. See [Screenshare with audio on Linux](https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux).
+- [ ] Validate native tab audio, whole-desktop audio, and the monitor fallback on Chrome/Chromium under both Wayland and X11.
+- [x] Add an echo-risk warning when a full-output monitor source is selected.
+- [ ] Move shared-content audio to a dedicated WebRTC transceiver so the receiver can control microphone and shared-audio volume independently.
 
 ## Requested focus — chatbox and fullscreen experience
 
@@ -60,6 +99,7 @@ This roadmap keeps the product database-free. Rooms remain ephemeral, signaling 
 
 ## Engineering improvements discovered in the audit
 
+- [x] Auto-dismiss transient media and Picture-in-Picture error banners while keeping blocking room errors persistent.
 - [x] Consolidate duplicated data-channel message parsing into one handler.
 - [x] Replace repeated transceiver identification by array position with explicit transceiver references.
 - [x] Stop and close all media tracks and `AudioContext` instances when leaving.

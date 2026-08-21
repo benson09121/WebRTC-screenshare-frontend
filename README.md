@@ -16,9 +16,12 @@ PairBeam is a database-free WebRTC room for two people to call, share screens, a
 - Supports microphone, camera, and simultaneous two-way screen sharing
 - Lets each participant independently choose whose screen to view
 - Returns to the participant camera or avatar when a share ends
-- Offers native, 1080p60, 720p60, and 480p30 sharing presets
+- Offers adaptive Auto quality plus native, 1080p60, 720p60, and 480p30 sharing presets
+- Includes a distraction-free presentation mode with Fit, Fill, and scrollable 100% screen views
+- Keeps shared audio live when the microphone is muted and can use an exposed PipeWire/PulseAudio monitor on Linux
+- Floats the participant, local camera, or active video above the desktop with browser Picture-in-Picture support
 - Keeps chat available beside fullscreen content without covering the shared screen
-- Shows connection health, real encoded/decoded quality, and direct or TURN-relayed status
+- Shows actual screen capture/encoded resolution, FPS, bitrate, connection health, and direct or TURN-relayed status
 - Reconnects signaling and lets a participant rejoin the same temporary room
 
 ## How it works
@@ -114,7 +117,7 @@ npm test
 - [Product roadmap](./ROADMAP.md)
 - [UI and interaction specification](./ui_spec.md)
 
-The current roadmap prioritizes adaptive screen-share quality, presentation controls, pre-call device checks, accessibility testing, and stronger production hardening while keeping PairBeam database-free and limited to two participants.
+The current roadmap prioritizes safer screen-source replacement, keyboard shortcuts, pre-call device checks, accessibility testing, and stronger production hardening while keeping PairBeam database-free and limited to two participants.
 
 ## Contributing
 

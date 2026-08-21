@@ -4,15 +4,19 @@ import {
   Eye,
   EyeOff,
   FlipHorizontal,
+  Focus,
   Maximize,
   Minimize,
   MonitorPlay,
   MonitorUp,
+  PictureInPicture2,
   User,
   Video,
+  X,
 } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
 import { getNextSelectedView } from '../lib/viewSelection';
+import { getNextScreenViewMode, getScreenVideoLayout } from '../lib/screenViewMode';
 import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
@@ -73,6 +77,8 @@ export const VideoPlayer = ({ isIdle }) => {
     isChatOpen,
     isFullscreen,
     setIsFullscreen,
+    isPresentationMode,
+    setIsPresentationMode,
     remoteCameraOff,
     remoteScreenSharing,
     peerPresence,
@@ -83,11 +89,17 @@ export const VideoPlayer = ({ isIdle }) => {
   const localVideoRef = useRef(null);
   const containerRef = useRef(null);
   const previousSharesRef = useRef({ local: false, remote: false });
+  const pictureInPictureErrorTimerRef = useRef(null);
 
   const [selectedView, setSelectedView] = useState('remote-camera');
   const [hideMainVideo, setHideMainVideo] = useState(false);
   const [hideLocal, setHideLocal] = useState(false);
   const [isMirrored, setIsMirrored] = useState(true);
+  const [pictureInPictureView, setPictureInPictureView] = useState(null);
+  const [pictureInPictureError, setPictureInPictureError] = useState(null);
+  const [screenViewMode, setScreenViewMode] = useState('fit');
+  const [mainVideoSize, setMainVideoSize] = useState({ width: 0, height: 0 });
+  const [stageAnnouncement, setStageAnnouncement] = useState('');
 
   const hasRemoteScreen = remoteScreenSharing && Boolean(
     remoteScreenStream?.getVideoTracks().some(track => track.readyState === 'live'),
@@ -96,6 +108,10 @@ export const VideoPlayer = ({ isIdle }) => {
     localScreenStream?.getVideoTracks().some(track => track.readyState === 'live'),
   );
   const isScreenView = selectedView !== 'remote-camera';
+  const canUsePictureInPicture = Boolean(
+    document.pictureInPictureEnabled
+    && HTMLVideoElement.prototype.requestPictureInPicture,
+  );
 
   const mainStream = selectedView === 'remote-screen'
     ? remoteScreenStream
@@ -108,6 +124,21 @@ export const VideoPlayer = ({ isIdle }) => {
     : selectedView === 'local-screen'
       ? 'Your screen'
       : 'Participant';
+
+  const dismissPictureInPictureError = () => {
+    window.clearTimeout(pictureInPictureErrorTimerRef.current);
+    pictureInPictureErrorTimerRef.current = null;
+    setPictureInPictureError(null);
+  };
+
+  const showPictureInPictureError = (message) => {
+    window.clearTimeout(pictureInPictureErrorTimerRef.current);
+    setPictureInPictureError(message);
+    pictureInPictureErrorTimerRef.current = window.setTimeout(() => {
+      setPictureInPictureError(null);
+      pictureInPictureErrorTimerRef.current = null;
+    }, 7000);
+  };
 
   useEffect(() => {
     const previous = previousSharesRef.current;
@@ -124,7 +155,26 @@ export const VideoPlayer = ({ isIdle }) => {
 
   useEffect(() => {
     setHideMainVideo(false);
+    setScreenViewMode('fit');
+    setMainVideoSize({ width: 0, height: 0 });
   }, [selectedView]);
+
+  useEffect(() => {
+    if (isScreenView || !isPresentationMode) return;
+    setIsPresentationMode(false);
+    setStageAnnouncement('Presentation mode ended because no screen is selected.');
+  }, [isPresentationMode, isScreenView, setIsPresentationMode]);
+
+  useEffect(() => {
+    if (!isPresentationMode || isChatOpen) return undefined;
+    const handlePresentationKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      setIsPresentationMode(false);
+      setStageAnnouncement('Presentation mode off.');
+    };
+    window.addEventListener('keydown', handlePresentationKeyDown);
+    return () => window.removeEventListener('keydown', handlePresentationKeyDown);
+  }, [isChatOpen, isPresentationMode, setIsPresentationMode]);
 
   useEffect(() => {
     const video = localVideoRef.current;
@@ -147,6 +197,34 @@ export const VideoPlayer = ({ isIdle }) => {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [setIsFullscreen]);
 
+  useEffect(() => {
+    const videos = [
+      [mainVideoRef.current, 'main'],
+      [remoteCameraVideoRef.current, 'remote-camera'],
+      [localVideoRef.current, 'local-camera'],
+    ].filter(([video]) => video);
+    const cleanups = videos.map(([video, view]) => {
+      const handleEnter = () => {
+        setPictureInPictureView(view);
+        dismissPictureInPictureError();
+      };
+      const handleLeave = () => setPictureInPictureView(null);
+      video.addEventListener('enterpictureinpicture', handleEnter);
+      video.addEventListener('leavepictureinpicture', handleLeave);
+      return () => {
+        video.removeEventListener('enterpictureinpicture', handleEnter);
+        video.removeEventListener('leavepictureinpicture', handleLeave);
+      };
+    });
+
+    return () => cleanups.forEach(cleanup => cleanup());
+  }, [mainStream, remoteStream, localStream, selectedView, hideLocal, isScreenView]);
+
+  useEffect(() => () => {
+    window.clearTimeout(pictureInPictureErrorTimerRef.current);
+    pictureInPictureErrorTimerRef.current = null;
+  }, []);
+
   const toggleFullscreen = async () => {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen().catch(err => {
@@ -157,17 +235,80 @@ export const VideoPlayer = ({ isIdle }) => {
     }
   };
 
+  const togglePictureInPicture = async (video, view) => {
+    if (!video || !canUsePictureInPicture) return;
+
+    try {
+      dismissPictureInPictureError();
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+        return;
+      }
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      if (video.readyState === HTMLMediaElement.HAVE_NOTHING) {
+        throw new Error('The video is still loading. Try again in a moment.');
+      }
+      await video.requestPictureInPicture();
+      setPictureInPictureView(view);
+    } catch (error) {
+      console.error('Picture-in-Picture failed', error);
+      showPictureInPictureError(error.message || 'Picture-in-Picture is unavailable in this browser.');
+    }
+  };
+
+  const togglePresentationMode = () => {
+    const nextValue = !isPresentationMode;
+    setIsPresentationMode(nextValue);
+    setStageAnnouncement(nextValue
+      ? 'Presentation mode on. Camera previews and secondary controls are hidden.'
+      : 'Presentation mode off.');
+  };
+
+  const handleScreenViewModeChange = (nextMode) => {
+    const normalizedMode = getNextScreenViewMode(nextMode, isScreenView);
+    setScreenViewMode(normalizedMode);
+    const label = normalizedMode === 'pixel' ? '100% pixel view' : normalizedMode;
+    setStageAnnouncement(`Screen view: ${label}.`);
+  };
+
+  const syncMainVideoSize = (event) => {
+    const video = event.currentTarget;
+    const nextSize = { width: video.videoWidth || 0, height: video.videoHeight || 0 };
+    setMainVideoSize(current => (
+      current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+    ));
+  };
+
   const showParticipantPlaceholder = selectedView === 'remote-camera' && (remoteCameraOff || !remoteStream);
   const showStreamLoading = isScreenView && !mainStream;
-  const controlsHidden = isIdle && isFullscreen;
+  const controlsHidden = isIdle && (isFullscreen || isPresentationMode);
+  const screenVideoLayout = getScreenVideoLayout(screenViewMode);
+  const usesPixelView = isScreenView && screenViewMode === 'pixel';
+  const pixelSurfaceStyle = usesPixelView && mainVideoSize.width && mainVideoSize.height
+    ? {
+        width: `max(100%, ${mainVideoSize.width}px)`,
+        height: `max(100%, ${mainVideoSize.height}px)`,
+      }
+    : undefined;
+  const pixelVideoStyle = usesPixelView && mainVideoSize.width && mainVideoSize.height
+    ? { width: `${mainVideoSize.width}px`, height: `${mainVideoSize.height}px` }
+    : undefined;
 
   return (
     <TooltipProvider delayDuration={250}>
       <main
         ref={containerRef}
-        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden bg-[#090d0f] ${isFullscreen && isChatOpen ? 'call-stage--chat-docked' : ''}`}
+        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden bg-[#090d0f] ${(isFullscreen || isPresentationMode) && isChatOpen ? 'call-stage--chat-docked' : ''}`}
       >
-        {(hasRemoteScreen || hasLocalScreen) ? (
+        {pictureInPictureError ? (
+          <div role="alert" className="absolute left-1/2 top-20 z-40 flex w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-950/95 py-2 pl-4 pr-2 text-sm text-amber-100 shadow-xl">
+            <p className="min-w-0 flex-1 py-1.5">{pictureInPictureError}</p>
+            <Button variant="ghost" size="icon" onClick={dismissPictureInPictureError} aria-label="Dismiss Picture-in-Picture error" className="text-amber-100 hover:bg-white/10">
+              <X className="size-4" />
+            </Button>
+          </div>
+        ) : null}
+        {(hasRemoteScreen || hasLocalScreen) && !isPresentationMode ? (
           <div className={`absolute left-1/2 top-6 z-30 -translate-x-1/2 transition-opacity duration-300 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
             <div className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-600">
               Viewing
@@ -205,20 +346,43 @@ export const VideoPlayer = ({ isIdle }) => {
             </div>
           </section>
         ) : mainStream ? (
-          <video
-            ref={mainVideoRef}
-            autoPlay
-            playsInline
-            muted={selectedView === 'local-screen'}
-            onDoubleClick={toggleFullscreen}
-            aria-label={`${mainLabel} video`}
-            className={`h-full w-full cursor-pointer object-contain transition-opacity duration-300 ${hideMainVideo ? 'opacity-0' : 'opacity-100'} ${selectedView === 'remote-camera' && remoteMirrored ? 'scale-x-[-1]' : ''}`}
-          />
+          <div className={`h-full w-full ${isScreenView ? screenVideoLayout.viewportClassName : 'overflow-hidden'}`}>
+            <div
+              className={isScreenView ? screenVideoLayout.surfaceClassName : 'h-full w-full'}
+              style={pixelSurfaceStyle}
+            >
+              <video
+                ref={mainVideoRef}
+                autoPlay
+                playsInline
+                muted={selectedView === 'local-screen'}
+                onLoadedMetadata={syncMainVideoSize}
+                onResize={syncMainVideoSize}
+                onDoubleClick={toggleFullscreen}
+                aria-label={`${mainLabel} video`}
+                className={`cursor-pointer transition-opacity duration-300 motion-reduce:transition-none ${isScreenView ? screenVideoLayout.videoClassName : 'h-full w-full object-contain'} ${hideMainVideo ? 'opacity-0' : 'opacity-100'} ${selectedView === 'remote-camera' && remoteMirrored ? 'scale-x-[-1]' : ''}`}
+                style={pixelVideoStyle}
+              />
+            </div>
+          </div>
         ) : (
           <ParticipantPlaceholder connected={connected} peerPresence={peerPresence} />
         )}
 
-        {!showParticipantPlaceholder && mainStream ? (
+        {!showParticipantPlaceholder && mainStream && isPresentationMode ? (
+          <div className={`absolute right-3 top-3 z-40 transition-opacity duration-300 motion-reduce:transition-none sm:right-5 sm:top-5 ${controlsHidden ? 'opacity-35' : 'opacity-100'}`}>
+            <Button
+              variant="active"
+              className="h-11 px-3"
+              onClick={togglePresentationMode}
+              aria-label="Exit presentation mode"
+              aria-pressed="true"
+            >
+              <Focus className="size-4" />
+              Exit focus
+            </Button>
+          </div>
+        ) : !showParticipantPlaceholder && mainStream ? (
           <div className={`absolute right-5 top-5 z-20 flex gap-2 transition-opacity duration-300 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -234,34 +398,86 @@ export const VideoPlayer = ({ isIdle }) => {
               <TooltipContent>{hideMainVideo ? `Show ${mainLabel}` : `Hide ${mainLabel}`}</TooltipContent>
             </Tooltip>
 
-            {isScreenView ? (
+            {canUsePictureInPicture ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="secondary"
+                    variant={pictureInPictureView === 'main' ? 'active' : 'secondary'}
                     size="icon"
-                    onClick={toggleFullscreen}
-                    aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                    onClick={() => togglePictureInPicture(mainVideoRef.current, 'main')}
+                    aria-label={pictureInPictureView === 'main' ? `Return ${mainLabel} to the browser` : `Float ${mainLabel} on the desktop`}
                   >
-                    {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+                    <PictureInPicture2 className="size-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}</TooltipContent>
+                <TooltipContent>{pictureInPictureView === 'main' ? 'Close floating video' : `Float ${mainLabel} on desktop`}</TooltipContent>
               </Tooltip>
+            ) : null}
+
+            {isScreenView ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      onClick={togglePresentationMode}
+                      aria-label="Enter presentation mode"
+                      aria-pressed="false"
+                    >
+                      <Focus className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Focus on shared content</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      onClick={toggleFullscreen}
+                      aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                    >
+                      {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}</TooltipContent>
+                </Tooltip>
+              </>
             ) : null}
           </div>
         ) : null}
 
-        {isScreenView && remoteStream && !remoteCameraOff ? (
-          <motion.button
-            type="button"
+        {isScreenView && mainStream ? (
+          <div className={`absolute z-30 transition-[opacity,transform] duration-300 motion-reduce:transition-none ${isPresentationMode ? 'bottom-3 left-3 sm:bottom-5 sm:left-5' : 'bottom-20 left-3 sm:bottom-6 sm:left-6'} ${controlsHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}>
+            <Tabs value={screenViewMode} onValueChange={handleScreenViewModeChange}>
+              <TabsList className="min-h-0 gap-0.5 p-0" aria-label="Shared screen sizing">
+                <TabsTrigger value="fit" className="h-11 px-2.5" title="Show the entire shared screen">
+                  Fit
+                </TabsTrigger>
+                <TabsTrigger value="fill" className="h-11 px-2.5" title="Fill the stage and crop the edges">
+                  Fill
+                </TabsTrigger>
+                <TabsTrigger
+                  value="pixel"
+                  className="h-11 px-2.5"
+                  title="Show one shared-screen pixel per CSS pixel and scroll to pan"
+                  aria-label="Show shared screen at 100 percent with scrolling"
+                >
+                  100%
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        ) : null}
+
+        {isScreenView && !isPresentationMode && remoteStream && !remoteCameraOff ? (
+          <motion.div
             drag
             dragConstraints={containerRef}
             dragElastic={0.1}
             dragMomentum={false}
-            onClick={() => setSelectedView('remote-camera')}
-            className={`group/pip absolute left-4 top-24 z-30 aspect-video w-48 cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-[#111719] shadow-2xl outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-teal-300 sm:left-7 sm:w-64 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
-            aria-label="Show participant camera in the main view"
+            className={`group/pip absolute left-4 top-24 z-30 aspect-video w-48 overflow-hidden rounded-xl border border-white/10 bg-[#111719] shadow-2xl transition-opacity sm:left-7 sm:w-64 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
           >
             <video
               ref={remoteCameraVideoRef}
@@ -269,13 +485,36 @@ export const VideoPlayer = ({ isIdle }) => {
               playsInline
               className={`h-full w-full object-cover ${remoteMirrored ? 'scale-x-[-1]' : ''}`}
             />
-            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-7 text-left text-xs font-medium text-white">
-              Participant · click to focus
-            </span>
-          </motion.button>
+            <button
+              type="button"
+              onClick={() => setSelectedView('remote-camera')}
+              className="absolute inset-0 z-10 cursor-pointer rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-300"
+              aria-label="Show participant camera in the main view"
+            >
+              <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-7 text-left text-xs font-medium text-white">
+                Participant · click to focus
+              </span>
+            </button>
+            {canUsePictureInPicture ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={pictureInPictureView === 'remote-camera' ? 'active' : 'secondary'}
+                    size="icon"
+                    className="absolute right-2 top-2 z-20 size-9 opacity-0 group-hover/pip:opacity-100 group-focus-within/pip:opacity-100"
+                    onClick={() => togglePictureInPicture(remoteCameraVideoRef.current, 'remote-camera')}
+                    aria-label={pictureInPictureView === 'remote-camera' ? 'Return participant camera to the browser' : 'Float participant camera on the desktop'}
+                  >
+                    <PictureInPicture2 className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{pictureInPictureView === 'remote-camera' ? 'Close floating camera' : 'Float participant on desktop'}</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </motion.div>
         ) : null}
 
-        {!hideLocal && localStream && !isCameraOff ? (
+        {!isPresentationMode && !hideLocal && localStream && !isCameraOff ? (
           <motion.div
             drag
             dragConstraints={containerRef}
@@ -292,6 +531,17 @@ export const VideoPlayer = ({ isIdle }) => {
               aria-label="Your camera preview"
             />
             <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover/local:opacity-100 group-focus-within/local:opacity-100">
+              {canUsePictureInPicture ? (
+                <Button
+                  variant={pictureInPictureView === 'local-camera' ? 'active' : 'secondary'}
+                  size="icon"
+                  className="size-9"
+                  onClick={() => togglePictureInPicture(localVideoRef.current, 'local-camera')}
+                  aria-label={pictureInPictureView === 'local-camera' ? 'Return your camera to the browser' : 'Float your camera on the desktop'}
+                >
+                  <PictureInPicture2 className="size-4" />
+                </Button>
+              ) : null}
               <Button
                 variant="secondary"
                 size="icon"
@@ -319,7 +569,7 @@ export const VideoPlayer = ({ isIdle }) => {
           </motion.div>
         ) : null}
 
-        {hideLocal && localStream && !isCameraOff ? (
+        {!isPresentationMode && hideLocal && localStream && !isCameraOff ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -335,6 +585,9 @@ export const VideoPlayer = ({ isIdle }) => {
             <TooltipContent>Show your camera preview</TooltipContent>
           </Tooltip>
         ) : null}
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {stageAnnouncement}
+        </p>
       </main>
     </TooltipProvider>
   );

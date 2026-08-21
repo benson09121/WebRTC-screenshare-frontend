@@ -32,6 +32,7 @@ export const WebRTCProvider = ({ children }) => {
   const localStreamRef = useRef(null);
   const localScreenStreamRef = useRef(null);
   const audioTransceiverRef = useRef(null);
+  const outgoingAudioTrackRef = useRef(null);
   const cameraTransceiverRef = useRef(null);
   const screenTransceiverRef = useRef(null);
   const screenPlaceholderTrackRef = useRef(null);
@@ -65,6 +66,7 @@ export const WebRTCProvider = ({ children }) => {
   const [remoteCameraOff, setRemoteCameraOff] = useState(true);
   const [remoteScreenSharing, setRemoteScreenSharing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
 
   const isCameraOffRef = useRef(isCameraOff);
   const isScreenSharingRef = useRef(false);
@@ -280,7 +282,9 @@ export const WebRTCProvider = ({ children }) => {
 
           // Force incoming transceivers to sendrecv and attach local tracks!
           // This guarantees the Joiner negotiates sending tracks, firing ontrack on the Creator.
-          const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+          const audioTrack = outgoingAudioTrackRef.current?.readyState === 'live'
+            ? outgoingAudioTrackRef.current
+            : localStreamRef.current?.getAudioTracks()[0];
           const videoTrack = localStreamRef.current?.getVideoTracks()[0];
           const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
           
@@ -421,7 +425,9 @@ export const WebRTCProvider = ({ children }) => {
     };
 
     if (isCaller) {
-      const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+      const audioTrack = outgoingAudioTrackRef.current?.readyState === 'live'
+        ? outgoingAudioTrackRef.current
+        : localStreamRef.current?.getAudioTracks()[0];
       const videoTrack = localStreamRef.current?.getVideoTracks()[0];
       const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
 
@@ -487,15 +493,17 @@ export const WebRTCProvider = ({ children }) => {
   const endCall = () => {
     resetRemotePeer();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
-    localScreenStream?.getTracks().forEach(track => track.stop());
+    localScreenStreamRef.current?.getTracks().forEach(track => track.stop());
     localStreamRef.current = null;
     localScreenStreamRef.current = null;
+    outgoingAudioTrackRef.current = null;
     setLocalStreamState(null);
     setLocalScreenStreamState(null);
     setIsScreenSharing(false);
     setChatMessages([]);
     setUnreadCount(0);
     setIsChatOpen(false);
+    setIsPresentationMode(false);
     setPeerPresence('waiting');
     notificationAudioContextRef.current?.close().catch(() => {});
     notificationAudioContextRef.current = null;
@@ -517,12 +525,29 @@ export const WebRTCProvider = ({ children }) => {
     localStreamRef.current = stream;
     setLocalStreamState(stream);
 
+    const replacements = [];
     if (pcRef.current) {
       stream.getTracks().forEach(track => {
+        if (track.kind === 'audio' && isScreenSharingRef.current) return;
         const sender = getSender(track.kind, false);
-        if (sender) sender.replaceTrack(track).catch(e => console.warn(e));
+        if (track.kind === 'audio') outgoingAudioTrackRef.current = track;
+        if (sender) replacements.push(sender.replaceTrack(track));
       });
+    } else if (!isScreenSharingRef.current) {
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) outgoingAudioTrackRef.current = audioTrack;
     }
+
+    return Promise.all(replacements).catch(error => {
+      console.warn('Failed to update a camera or microphone sender', error);
+      throw error;
+    });
+  };
+
+  const setOutgoingAudioTrack = async (track) => {
+    outgoingAudioTrackRef.current = track;
+    const sender = getSender('audio');
+    if (sender) await sender.replaceTrack(track);
   };
 
   const setScreenStream = async (stream) => {
@@ -596,6 +621,7 @@ export const WebRTCProvider = ({ children }) => {
       sendMessage,
       sendControlMessage,
       setCameraStream,
+      setOutgoingAudioTrack,
       setScreenStream,
       getSender,
       connected,
@@ -615,6 +641,8 @@ export const WebRTCProvider = ({ children }) => {
       joinRoom,
       isFullscreen,
       setIsFullscreen,
+      isPresentationMode,
+      setIsPresentationMode,
       isChatOpen,
       setIsChatOpen,
       unreadCount,

@@ -19,6 +19,12 @@ const QUALITY_COPY = {
   unknown: { label: 'Measuring connection', dot: 'bg-zinc-500', text: 'text-zinc-300' },
 };
 
+const LIMITATION_COPY = {
+  cpu: { label: 'Device limiting video', dot: 'bg-amber-300', text: 'text-amber-200' },
+  bandwidth: { label: 'Upload limiting video', dot: 'bg-amber-300', text: 'text-amber-200' },
+  other: { label: 'Video quality adapting', dot: 'bg-amber-300', text: 'text-amber-200' },
+};
+
 const formatBitrate = value => {
   if (!value) return '0 kbps';
   if (value >= 1000) return `${(value / 1000).toFixed(1)} Mbps`;
@@ -46,11 +52,25 @@ const getAction = stats => {
       description: 'Use a stronger connection or lower the screen-share quality.',
     };
   }
+  if (stats.qualityLimitationReason === 'other') {
+    return {
+      icon: Gauge,
+      title: 'Browser adapting video',
+      description: 'The browser reduced resolution or frame rate for a non-network, non-CPU reason.',
+    };
+  }
   if (stats.quality === 'poor') {
     return {
       icon: TriangleAlert,
       title: 'Unstable connection',
       description: 'Packet loss or latency is affecting this call.',
+    };
+  }
+  if (stats.quality === 'fair') {
+    return {
+      icon: Network,
+      title: 'Connection adapting',
+      description: 'Moderate packet loss or latency may reduce call quality.',
     };
   }
   return null;
@@ -61,8 +81,12 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
 
   const quality = connected ? connectionStats.quality : 'unknown';
   const copy = QUALITY_COPY[quality] || QUALITY_COPY.unknown;
+  const limitation = connected
+    ? LIMITATION_COPY[connectionStats.qualityLimitationReason]
+    : null;
+  const displayCopy = limitation || copy;
   const statusLabel = connected
-    ? copy.label
+    ? displayCopy.label
     : wsStatus === 'reconnecting'
       ? 'Signaling reconnecting'
       : peerPresence === 'left'
@@ -83,7 +107,7 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
         aria-controls="connection-details"
         className="w-fit bg-[#111719]/90"
       >
-        <span className={`size-2 rounded-full ${copy.dot} ${connected ? '' : 'animate-pulse'}`} />
+        <span className={`size-2 rounded-full ${displayCopy.dot} ${connected ? '' : 'animate-pulse'}`} />
         {statusLabel}
       </Button>
 
@@ -95,7 +119,7 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
         >
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
             <div>
-              <p className={`text-sm font-semibold ${copy.text}`}>{statusLabel}</p>
+              <p className={`text-sm font-semibold ${displayCopy.text}`}>{statusLabel}</p>
               <p className="mt-0.5 text-xs text-zinc-500">
                 {connectionStats.connectionPath === 'relay'
                   ? 'Relayed through TURN'

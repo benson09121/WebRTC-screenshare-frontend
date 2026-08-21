@@ -69,7 +69,7 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
       framesDropped: stat.framesDropped,
     });
 
-    if (stat.type === 'outbound-rtp' && !stat.isRemote) {
+    if (stat.type === 'outbound-rtp' && !stat.isRemote && stat.active !== false) {
       sendBitrateKbps += rateFromCounter(stat, previous, 'bytesSent');
 
       if (stat.kind === 'video' || stat.mediaType === 'video') {
@@ -139,8 +139,7 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
   if (packetLossPercent >= 5 || (roundTripTimeMs != null && roundTripTimeMs >= 400)) {
     quality = 'poor';
   } else if (
-    qualityLimitationReason !== 'none'
-    || packetLossPercent >= 2
+    packetLossPercent >= 2
     || (roundTripTimeMs != null && roundTripTimeMs >= 200)
   ) {
     quality = 'fair';

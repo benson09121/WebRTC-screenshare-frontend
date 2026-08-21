@@ -18,13 +18,13 @@ This document outlines the UI behaviors and conditions implemented.
 - **Condition:** When the user initiates a screen share.
 - **Behavior:** The `mainStream` intelligently prioritizes the `localScreenStream`, meaning the user who is sharing their screen will actually see their own shared screen in the main view.
 
-## 5. Draggable PIP Windows
-- **Condition:** Always active for any PIP window (both Local Camera and Remote Camera).
-- **Behavior:** Utilizes `framer-motion` for spring-physics-based dragging (`<motion.div drag>`). It is constrained to the bounding box of the browser window. It is also completely resizable via the `resize overflow-hidden` CSS property, allowing corner-dragging to scale the PIP.
+## 5. Draggable In-Page Camera Previews
+- **Condition:** Active for the local camera preview and for the participant camera shown over a selected screen share.
+- **Behavior:** Uses `framer-motion` dragging constrained to the call stage. These previews remain inside PairBeam and are distinct from desktop Picture-in-Picture.
 
 ## 6. Fullscreen Auto-hide (Global Idle State)
 - **Condition:** Triggers 3 seconds after no mouse movement while in Fullscreen mode.
-- **Behavior:** Hides the main Control Panel, the Fullscreen toggle buttons, the top Room Information bar, and all PIP windows. The screen becomes entirely devoted to the shared stream. Opening the Chat prevents the idle state from triggering.
+- **Behavior:** Hides the main Control Panel, the Fullscreen toggle buttons, the top Room Information bar, and all in-page camera previews. The screen becomes entirely devoted to the shared stream. Opening the Chat prevents the idle state from triggering.
 
 ## 7. Fullscreen Chat Accessibility
 - **Condition:** The participant opens Chat while a screen share is fullscreen.
@@ -62,7 +62,7 @@ This document outlines the UI behaviors and conditions implemented.
 ## 12. Connection Health
 - **Sampling:** Collect standardized `RTCPeerConnection.getStats()` reports every two seconds while media is connected.
 - **Summary:** Show round-trip time, interval packet loss, sending and receiving bitrate, actual video dimensions/FPS, available upload bandwidth, and direct/relay path.
-- **Actionable states:** Browser `qualityLimitationReason` values produce specific CPU-limited or network-limited guidance.
+- **Actionable states:** Packet loss and round-trip time determine transport health. Browser `qualityLimitationReason` values are displayed separately as device/CPU, upload-bandwidth, or other video adaptation so local encoder pressure is not mislabeled as a failing connection.
 - **Rendering:** Cumulative counters stay outside React state; only the summarized health snapshot updates the interface.
 
 ## 13. Signaling Recovery and Presence
@@ -71,3 +71,44 @@ This document outlines the UI behaviors and conditions implemented.
 - **Presence:** Explicitly represent waiting, joining, connected, reconnecting, and participant-left states.
 - **Rejoin:** Keep the remaining participant in the room and negotiate a fresh peer connection when the other participant returns.
 - **Capacity:** Reject a third participant with an inline room-full error.
+
+## 14. Desktop Picture-in-Picture
+- **Availability:** Render the desktop PiP control only when the browser exposes `document.pictureInPictureEnabled` and `HTMLVideoElement.requestPictureInPicture()`.
+- **Sources:** The active main video, the participant camera preview, and the local camera preview can each be opened as the single browser-managed PiP video.
+- **Desktop behavior:** The browser and operating-system window manager create and position the floating window outside PairBeam. PairBeam cannot force arbitrary application windows to stay on top.
+- **Failure state:** If the video is not ready or the browser rejects the request, keep the call unchanged and show an inline, accessible error.
+
+## 15. Screen-Share Audio
+- **Capture request:** Ask the browser for screen/window audio through top-level `systemAudio` and `windowAudio` hints. The selected surface and browser decide whether an audio track is returned.
+- **Mute independence:** Rebuild the outgoing microphone/screen mix whenever the microphone is muted, enabled, or changed. Muting the microphone must not remove a live screen-audio track from the sender.
+- **Linux fallback:** When the browser exposes a non-virtual PipeWire/PulseAudio physical-output monitor as an audio input, allow the user to select it explicitly. Do not select or capture a monitor without user action.
+- **Status:** Report whether audio came from the browser share, a selected monitor, or was unavailable while video sharing continues.
+- **Cleanup:** Stop monitor/display tracks and close the mixing `AudioContext` when sharing or the call ends.
+
+## 16. Adaptive Screen Quality
+- **Default:** New shares use Auto quality. Motion starts at 720p60; text/detail starts at 1080p20.
+- **Content-aware order:** Under sustained pressure, motion shares reduce resolution before frame rate. Text/detail shares reduce frame rate before resolution to preserve readable text.
+- **Feedback loop:** Sample only the screen `RTCRtpSender` every two seconds. CPU, bandwidth, and other browser limitation reasons drive adaptation; constrained outgoing bitrate makes a bandwidth downgrade happen sooner.
+- **Hysteresis:** Require repeated limited samples before stepping down, wait at least ten seconds between changes, and require eight healthy samples before stepping up. A single sample never changes quality.
+- **Live changes:** Changing Auto/manual quality or content type while sharing applies new track constraints and sender parameters without restarting the share picker.
+- **Truthful metrics:** Show the track's configured capture dimensions/FPS from `getSettings()` separately from the sender's actual encoded dimensions/FPS and outgoing bitrate from `getStats()`.
+- **Compatibility:** If capture constraints are rejected, keep sharing and use sender scaling/bitrate limits when supported rather than ending the share.
+
+## 17. Presentation and Screen Sizing
+- **Availability:** Presentation mode and screen-sizing controls appear only while a local or remote screen is selected as the main view.
+- **Presentation mode:** Hide the room header, source selector, camera previews, bottom call controls, and secondary video actions. Keep room chat available and retain an explicit “Exit focus” control that never becomes noninteractive.
+- **Share end:** If the selected screen ends and the view falls back to the participant camera, presentation mode exits automatically.
+- **Chat:** In presentation mode, use the same responsive chat behavior as fullscreen: a docked rail that reserves stage width on larger screens and a bounded bottom sheet on narrow screens.
+- **Escape priority:** When chat is open, Escape closes chat first. When chat is closed, Escape exits presentation mode. Browser fullscreen remains controlled by the browser's fullscreen behavior.
+- **Fit:** Use `object-contain` so the complete shared surface remains visible with possible letterboxing.
+- **Fill:** Use `object-cover` so the shared surface fills the stage; edges may be cropped when aspect ratios differ.
+- **100%:** Render the video at its decoded intrinsic dimensions with no CSS downscaling. Place it in a two-axis scrollable viewport so oversized screens can be panned without clipping inaccessible edges.
+- **Source changes:** Reset sizing to Fit when the selected local/remote source changes or no screen remains.
+- **Accessibility:** Use keyboard-navigable Tabs for sizing, `aria-pressed` for presentation state, visible focus rings, and a polite live region for mode changes.
+
+## 18. Error Banner Lifetime
+- **Transient errors:** Media-device, screen-share, and Picture-in-Picture errors remain visible for seven seconds and then dismiss automatically.
+- **Repeated errors:** A newly reported error restarts the full seven-second timer, including when its message matches the current error.
+- **Manual dismissal:** Every transient error banner includes a keyboard-accessible close button with an accessible name.
+- **Cleanup:** Clear pending dismissal timers when their owning component unmounts so a timer cannot update removed call UI.
+- **Blocking errors:** Room-capacity and join failures remain visible until the user retries or navigation changes because the underlying action did not succeed.

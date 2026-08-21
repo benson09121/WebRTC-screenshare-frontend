@@ -10,7 +10,7 @@ import { Button } from './components/ui/button';
 import { ConnectionHealth } from './components/ConnectionHealth';
 
 const MainApp = () => {
-  const { roomId, isChatOpen } = useWebRTC();
+  const { roomId, isChatOpen, isPresentationMode } = useWebRTC();
   const [isIdle, setIsIdle] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isConnectionDetailsOpen, setIsConnectionDetailsOpen] = useState(false);
@@ -37,6 +37,7 @@ const MainApp = () => {
   }, []);
 
   const actualIsIdle = isIdle && !isChatOpen && !isConnectionDetailsOpen;
+  const roomHeaderHidden = actualIsIdle || isPresentationMode;
 
   const copyRoomLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -55,7 +56,11 @@ const MainApp = () => {
   return (
     <div className="absolute inset-0 flex h-full w-full flex-col overflow-hidden bg-[#090d0f] font-sans animate-[fadeIn_0.5s_ease-out]">
       {/* Top Bar for Room Info */}
-      <header className={`pointer-events-none absolute left-4 top-4 z-30 transition-all duration-300 sm:left-6 sm:top-6 ${actualIsIdle ? '-translate-y-3 opacity-0' : 'translate-y-0 opacity-100'}`}>
+      <header
+        className={`pointer-events-none absolute left-4 top-4 z-30 transition-all duration-300 motion-reduce:transition-none sm:left-6 sm:top-6 ${roomHeaderHidden ? '-translate-y-3 opacity-0' : 'translate-y-0 opacity-100'}`}
+        aria-hidden={isPresentationMode}
+        inert={isPresentationMode ? '' : undefined}
+      >
         <div className="pointer-events-auto flex w-fit items-center gap-2 rounded-xl border border-white/10 bg-[#111719]/90 p-1.5 pl-3 shadow-[0_12px_35px_rgba(0,0,0,0.3)] backdrop-blur-xl">
           <Users className="size-4 text-teal-300" />
           <span className="font-mono text-xs font-semibold tracking-[0.14em] text-zinc-200">

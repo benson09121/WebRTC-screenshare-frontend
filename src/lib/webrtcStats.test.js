@@ -77,7 +77,7 @@ test('summarizes interval rates, packet loss, relay path, and video dimensions',
   });
 });
 
-test('reports CPU limitation as fair when transport metrics are otherwise healthy', () => {
+test('reports CPU pressure separately from otherwise healthy transport metrics', () => {
   const report = makeReport([
     {
       id: 'pair',
@@ -99,7 +99,35 @@ test('reports CPU limitation as fair when transport metrics are otherwise health
 
   const { stats } = summarizeWebRTCStats(report);
 
-  assert.equal(stats.quality, 'fair');
+  assert.equal(stats.quality, 'good');
   assert.equal(stats.qualityLimitationReason, 'cpu');
   assert.equal(stats.roundTripTimeMs, 50);
+});
+
+test('ignores encoder limitations reported by inactive outbound streams', () => {
+  const report = makeReport([
+    {
+      id: 'active-video',
+      type: 'outbound-rtp',
+      timestamp: 2000,
+      kind: 'video',
+      active: true,
+      bytesSent: 1000,
+      qualityLimitationReason: 'none',
+    },
+    {
+      id: 'inactive-placeholder',
+      type: 'outbound-rtp',
+      timestamp: 2000,
+      kind: 'video',
+      active: false,
+      bytesSent: 0,
+      qualityLimitationReason: 'cpu',
+    },
+  ]);
+
+  const { stats } = summarizeWebRTCStats(report);
+
+  assert.equal(stats.quality, 'good');
+  assert.equal(stats.qualityLimitationReason, 'none');
 });
