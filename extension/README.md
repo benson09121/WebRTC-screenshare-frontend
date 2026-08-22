@@ -1,10 +1,12 @@
 # PairBeam Vidking Sync Prototype
 
-This unpacked Chrome extension lets PairBeam observe and control the ordinary video element inside a Vidking embed. It sends only playback events and commands (play, pause, seek, position) through PairBeam's existing WebRTC data channel. It does not discover, copy, proxy, download, or relay the provider's media URL.
+This cross-browser MV3 extension lets PairBeam observe and control the ordinary video element inside a Vidking embed on desktop Chrome/Chromium and Firefox. It sends only playback events and commands (play, pause, seek, position) through PairBeam's existing WebRTC data channel. It does not discover, copy, proxy, download, or relay the provider's media URL.
 
 ## Install the downloaded extension
 
-Both participants must install the extension.
+Both participants must install the extension. PairBeam detects the current browser and offers the matching archive.
+
+### Chrome, Edge, Opera, and Chromium
 
 1. Download `pairbeam-extension.zip` from PairBeam.
 2. Extract the ZIP to a permanent folder. Do not delete that folder while using the extension.
@@ -14,7 +16,17 @@ Both participants must install the extension.
 6. Select the extracted `extension` folder containing `manifest.json`.
 7. Reload the PairBeam tab.
 
-Chrome may report `CRX_REQUIRED_PROOF_MISSING` for a privately packed `.crx`. PairBeam therefore does not offer direct CRX installation. The ZIP is source code for Chrome's documented **Load unpacked** workflow and does not attempt to install anything automatically.
+Chrome may report `CRX_REQUIRED_PROOF_MISSING` for a privately packed `.crx`. PairBeam therefore does not offer direct CRX installation. The ZIP is source code for the browser's documented **Load unpacked** workflow and does not attempt to install anything automatically.
+
+### Firefox
+
+1. Download `pairbeam-firefox-extension.zip` from PairBeam and keep it intact.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Choose **Load Temporary Add-on**.
+4. Select the downloaded ZIP itself. The Firefox package keeps `manifest.json` at the archive root.
+5. Reload PairBeam.
+
+Firefox removes a temporary add-on when the browser restarts. Standard Firefox requires Mozilla signing for permanent installation; this personal project does not silently weaken that browser security setting. Firefox Developer Edition, Nightly, and some ESR deployments provide separate advanced testing policies, but temporary loading is the documented default development workflow.
 
 For a custom production domain, add its exact HTTPS match pattern to the PairBeam entry in `manifest.json`, reload the extension, and reload PairBeam. The included patterns support localhost, `127.0.0.1`, and Vercel preview/production subdomains.
 
@@ -22,7 +34,8 @@ The download never includes `extension.pem` or a `.crx` package.
 
 ## Current scope
 
-- Chrome/Chromium with Vidking movie and exact TV episode embeds is the supported experimental combination. PairBeam chooses the episode before loading the provider and disables Vidking's internal episode switching for synchronized sessions.
+- Desktop Chrome/Chromium and Firefox with Vidking movie and exact TV episode embeds are the supported experimental combinations. PairBeam chooses the episode before loading the provider and disables Vidking's internal episode switching for synchronized sessions.
+- The manifest declares both `background.service_worker` for Chromium and `background.scripts` for Firefox, following Mozilla's cross-browser MV3 guidance. Firefox's `chrome.*` callback compatibility keeps one audited bridge implementation across both browsers.
 - Pointer and keyboard activity inside the cross-origin player is forwarded to PairBeam so its fullscreen controls can follow the same 3-second inactivity timer as the rest of the room UI.
 - The person who proposes the title is the playback authority. The other participant's controls become requests that the authority applies and broadcasts back.
 - Autoplay rules can require each participant to press play once.

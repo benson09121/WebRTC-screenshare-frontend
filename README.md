@@ -16,7 +16,7 @@ PairBeam is a database-free WebRTC room for two people to call, share screens or
 - Supports microphone, camera, and simultaneous two-way screen sharing
 - Streams a compatible movie selected from the host computer, or synchronizes a direct media URL when browser capture is blocked
 - Searches TMDB movie and TV metadata directly from the browser, including season and episode browsing, without adding a PairBeam database or catalog backend
-- Includes an experimental Chrome companion extension that can synchronize a consented Vidking movie or exact TV episode without relaying provider media through PairBeam
+- Includes an experimental Chrome/Chromium and Firefox companion extension that can synchronize a consented Vidking movie or exact TV episode without relaying provider media through PairBeam
 - Gives the movie host play, pause, seek, and stop controls with 24/30fps adaptive quality
 - Shows synchronized movie controls to both participants so either person can play, pause, seek, toggle an added SRT subtitle, or request an exposed audio-track change
 - Preserves native movie aspect ratios in fullscreen with a true-black shared-content stage and explicit Fit, Crop, and 100% viewing modes
@@ -59,7 +59,7 @@ Room membership exists only in the signaling server's process memory. PairBeam h
 | Calls and sharing | WebRTC media transceivers |
 | Chat and call controls | WebRTC data channel |
 | Catalog metadata | Direct browser requests to TMDB |
-| Experimental provider sync | Unpacked Chrome MV3 companion extension |
+| Experimental provider sync | Cross-browser MV3 companion extension for desktop Chrome/Chromium and Firefox |
 | Signaling | Node.js, Express, and WebSocket |
 | Persistence | None |
 
@@ -106,20 +106,29 @@ VITE_TURN_PASSWORD=deployment-credential
 
 The catalog intentionally runs entirely in the frontend. `VITE_TMDB_READ_ACCESS_TOKEN` is therefore embedded in the public Vite bundle and visible to visitors. Use only a restricted, replaceable TMDB application read token—never a TMDB user/session credential. Catalog results are metadata only and do not imply that PairBeam or another provider can play that title.
 
-Vidking does not expose the complete inbound play/pause/seek contract PairBeam needs from an ordinary cross-origin page. The repository therefore includes a Chrome-first companion-extension prototype for controlled personal testing. PairBeam distributes a ZIP of the unpacked extension source for manual installation through Chrome Developer mode. It observes the provider's ordinary video element and transports only playback commands through PairBeam; it does not extract, proxy, download, or WebRTC-relay provider media. Vidsrc.sbs remains unsupported because its changing nested player origins have not passed this control and security model. Technical embeddability does not establish content distribution rights.
+Vidking does not expose the complete inbound play/pause/seek contract PairBeam needs from an ordinary cross-origin page. The repository therefore includes a cross-browser MV3 companion-extension prototype for controlled personal testing. PairBeam detects desktop Firefox versus Chrome/Chromium and offers the matching ZIP and instructions. The shared manifest uses Mozilla's documented `background.scripts` fallback alongside Chrome's `background.service_worker`; the extension observes the provider's ordinary video element and transports only playback commands through PairBeam. It does not extract, proxy, download, or WebRTC-relay provider media. Vidsrc.sbs remains unsupported because its changing nested player origins have not passed this control and security model. Technical embeddability does not establish content distribution rights.
 
 ## Test the experimental Vidking synchronization
 
-Both participants must use Chrome/Chromium and manually load the extension. The missing-extension warning in PairBeam provides the unpacked-source ZIP:
+Both participants must use desktop Firefox or Chrome/Chromium and manually load the extension. They may use different supported browsers. PairBeam detects the current browser locally and presents the matching download.
+
+Chrome/Chromium:
 
 1. Download and extract `pairbeam-extension.zip` from PairBeam.
 2. Open `chrome://extensions` and enable **Developer mode**.
 3. Choose **Load unpacked** and select the extracted `extension` folder containing `manifest.json`.
 4. Reload PairBeam in both browsers.
-5. Join the same room and open **Share a movie → Browse catalog**. Select a movie, or select a TV series followed by an exact season and episode.
-6. The other participant reviews the third-party disclosure and accepts the invitation.
 
-PairBeam does not trigger installation and does not distribute a `.crx`; privately packed CRX files can be rejected with `CRX_REQUIRED_PROOF_MISSING`. The user explicitly selects the extracted folder through Chrome's **Load unpacked** action. If PairBeam uses a custom production domain, first add its exact HTTPS match pattern to `extension/manifest.json`. After installing or changing the allowed origin, reload the extension and PairBeam. The ZIP contains neither a private signing key nor hidden installation code.
+Firefox:
+
+1. Download `pairbeam-firefox-extension.zip` from PairBeam and keep it intact.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Choose **Load Temporary Add-on** and select the downloaded ZIP itself. Its `manifest.json` is packaged at the archive root as Firefox requires.
+4. Reload PairBeam. Firefox removes a temporary add-on when the browser restarts, so repeat this temporary-load step after a restart.
+
+After installation, join the same room and open **Share a movie → Browse catalog**. Select a movie, or select a TV series followed by an exact season and episode. The other participant reviews the third-party disclosure and accepts the invitation.
+
+PairBeam does not trigger installation and does not distribute a `.crx`; privately packed CRX files can be rejected with `CRX_REQUIRED_PROOF_MISSING`. Standard Firefox also blocks permanent unsigned add-ons, so this personal build uses Mozilla's temporary debugging installation flow; permanent Firefox distribution would require Mozilla signing, even if distributed privately. If PairBeam uses a custom production domain, first add its exact HTTPS match pattern to `extension/manifest.json`. After installing or changing the allowed origin, reload the extension and PairBeam. The ZIPs contain neither a private signing key nor hidden installation code.
 
 The proposer is the authoritative player. Actions from the other participant are requests applied by that player and then broadcast back with an increasing revision. Volume remains local, so each participant can choose a different level. Autoplay policy may require each person to click the provider player once. See the [extension test notes](./extension/README.md) for current limitations.
 
@@ -129,7 +138,7 @@ While an episode is playing, use the arrow on the left edge to open the episode 
 
 Timeline seeking uses a short synchronization barrier: playback pauses, the authority publishes the selected timestamp, both players get 900 ms to settle, and playback resumes only if it was playing before the seek. A movie that was already paused remains paused after seeking.
 
-Vidking rejects iframe sandbox restrictions, so PairBeam does not add an incompatible `sandbox` attribute to this experimental embed. Extension version 0.3 closes new top-level targets created by provider subframes during an accepted watch session and adds coordinated seeking. This is popup-tab protection, not generic ad removal: advertising rendered inside the player is controlled by the provider and is not scraped or hidden by PairBeam.
+Vidking rejects iframe sandbox restrictions, so PairBeam does not add an incompatible `sandbox` attribute to this experimental embed. Extension version 0.4.1 adds the Firefox event-page manifest fallback, packages Firefox's `manifest.json` at the ZIP root, and restores active-session state whenever a suspended background context registers again. It also retains coordinated seeking and closes new top-level targets created by provider subframes during an accepted watch session. This is popup-tab protection, not generic ad removal: advertising rendered inside the player is controlled by the provider and is not scraped or hidden by PairBeam.
 
 Use PairBeam's labelled top-right **Fullscreen** button for the integrated watch-party view. It fullscreens the PairBeam root so chat, episode navigation, the participant camera, and the bottom call dashboard stay available. Native fullscreen permission is intentionally not granted to the cross-origin provider frame because the browser would place that frame above every PairBeam control. In fullscreen, the bottom-center arrow controls the mic, camera, screen-share, movie, and leave dashboard. After three seconds without pointer or keyboard activity, the chat launcher or panel, episode trigger, dashboard and its arrow, plus the fullscreen and stop-watching actions fade out and stop accepting input; a hidden chat panel also releases its reserved stage space. Activity anywhere in PairBeam or inside the provider player restores them. In the ordinary room, opening chat overlays playback without shrinking the stage. The participant camera can be dragged within the stage, while focusing it requires the explicit Focus button so a drag cannot accidentally replace the movie.
 

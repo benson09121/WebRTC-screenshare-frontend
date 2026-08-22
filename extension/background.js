@@ -31,6 +31,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.source === 'pairbeam-bridge' && message.type === 'register') {
     state.pairbeamFrameId = sender.frameId;
+    state.watchActive = Boolean(message.watchActive);
     sendStatus(tabId);
     chrome.tabs.sendMessage(tabId, { target: 'vidking-player', type: 'register-request' }, () => {
       void chrome.runtime.lastError;

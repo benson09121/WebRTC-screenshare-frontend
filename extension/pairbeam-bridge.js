@@ -1,12 +1,17 @@
 const PAGE_CHANNEL = 'pairbeam-page';
 const EXTENSION_CHANNEL = 'pairbeam-extension';
+let watchSessionActive = false;
 
 const postToPage = payload => {
   window.postMessage({ channel: EXTENSION_CHANNEL, ...payload }, window.location.origin);
 };
 
 const register = () => {
-  chrome.runtime.sendMessage({ source: 'pairbeam-bridge', type: 'register' }, response => {
+  chrome.runtime.sendMessage({
+    source: 'pairbeam-bridge',
+    type: 'register',
+    watchActive: watchSessionActive,
+  }, response => {
     if (chrome.runtime.lastError) return;
     postToPage({ type: 'status', detected: true, playerReady: Boolean(response?.playerReady) });
   });
@@ -22,6 +27,7 @@ window.addEventListener('message', event => {
     return;
   }
   if (message.type === 'watch-session' && typeof message.active === 'boolean') {
+    watchSessionActive = message.active;
     chrome.runtime.sendMessage({
       source: 'pairbeam-bridge',
       type: 'watch-session',

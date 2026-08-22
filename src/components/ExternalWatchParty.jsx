@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, ExternalLink, Film, LoaderCircle, Maximize, Minimize, Puzzle, X } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
 import { buildVidkingEmbedUrl } from '../lib/externalWatchProtocol';
+import { detectCurrentExtensionBrowser } from '../lib/extensionBrowser';
 import { Button } from './ui/button';
-import extensionArchiveUrl from '../../pairbeam-extension.zip?url&no-inline';
+import chromiumExtensionArchiveUrl from '../../pairbeam-extension.zip?url&no-inline';
+import firefoxExtensionArchiveUrl from '../../pairbeam-firefox-extension.zip?url&no-inline';
 import { SeriesEpisodeDrawer } from './SeriesEpisodeDrawer';
 
 const PAGE_CHANNEL = 'pairbeam-page';
@@ -12,6 +14,32 @@ const PUBLISH_EVENTS = new Set(['play', 'pause', 'seeked', 'timeupdate', 'ready'
 const REQUEST_EVENTS = new Set(['play', 'pause', 'seeked']);
 const SEEK_SETTLE_DELAY_MS = 900;
 const EXTENSION_GUIDE_URL = 'https://github.com/benson09121/WebRTC-screenshare-frontend/tree/main/extension';
+const EXTENSION_TARGETS = {
+  chromium: {
+    browserName: 'Chrome/Chromium',
+    archiveUrl: chromiumExtensionArchiveUrl,
+    downloadName: 'pairbeam-extension.zip',
+    steps: [
+      <>Download and extract the PairBeam extension ZIP.</>,
+      <>Open <code>chrome://extensions</code> and enable Developer mode.</>,
+      <>Choose <strong>Load unpacked</strong>.</>,
+      <>Select the extracted <code>extension</code> folder.</>,
+      <>Reload PairBeam after installation.</>,
+    ],
+  },
+  firefox: {
+    browserName: 'Firefox',
+    archiveUrl: firefoxExtensionArchiveUrl,
+    downloadName: 'pairbeam-firefox-extension.zip',
+    steps: [
+      <>Download the PairBeam Firefox extension ZIP. Keep the ZIP intact.</>,
+      <>Open <code>about:debugging#/runtime/this-firefox</code>.</>,
+      <>Choose <strong>Load Temporary Add-on</strong>.</>,
+      <>Select the downloaded <code>pairbeam-firefox-extension.zip</code> file.</>,
+      <>Reload PairBeam after installation.</>,
+    ],
+  },
+};
 
 const posterUrl = path => path
   ? `https://image.tmdb.org/t/p/w342${path.startsWith('/') ? path : `/${path}`}`
@@ -39,41 +67,78 @@ const MediaSummary = ({ media }) => {
   );
 };
 
-const ExtensionInstallNotice = ({ compact = false }) => (
-  <div className={`flex gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] text-amber-100 ${compact ? 'p-2.5' : 'p-3'}`} role="alert">
-    <Puzzle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-    <div className="min-w-0">
-      <p className="text-xs font-semibold">PairBeam extension required</p>
-      <p className="mt-1 text-[11px] leading-5 text-amber-100/80">Both participants must load the downloaded extension folder in Chrome and reload the room.</p>
-      {!compact ? (
-        <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-[11px] leading-5 text-amber-100/80">
-          <li>Download and extract the PairBeam extension ZIP.</li>
-          <li>Open `chrome://extensions` and enable Developer mode.</li>
-          <li>Choose <strong>Load unpacked</strong>.</li>
-          <li>Select the extracted `extension` folder.</li>
-          <li>Reload PairBeam after installation.</li>
-        </ol>
-      ) : null}
-      <div className="mt-2 flex flex-wrap gap-2">
-        <a
-          href={extensionArchiveUrl}
-          download="pairbeam-extension.zip"
-          className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-amber-100 px-3 text-xs font-semibold text-amber-950 outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-amber-200"
-        >
-          Download extension ZIP
-        </a>
-        <a
-          href={EXTENSION_GUIDE_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-amber-200/25 bg-amber-100/10 px-3 text-xs font-medium text-amber-50 outline-none transition-colors hover:bg-amber-100/15 focus-visible:ring-2 focus-visible:ring-amber-200"
-        >
-          Installation help <ExternalLink className="size-3.5" aria-hidden="true" />
-        </a>
+const ExtensionInstallNotice = ({ compact = false }) => {
+  const detectedBrowser = detectCurrentExtensionBrowser();
+  const target = EXTENSION_TARGETS[detectedBrowser.family] || null;
+  const alternateTarget = detectedBrowser.family === 'firefox'
+    ? EXTENSION_TARGETS.chromium
+    : EXTENSION_TARGETS.firefox;
+
+  return (
+    <div className={`flex gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] text-amber-100 ${compact ? 'p-2.5' : 'p-3'}`} role="alert">
+      <Puzzle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold">PairBeam extension required</p>
+        <p className="mt-1 text-[11px] leading-5 text-amber-100/80">
+          {target && detectedBrowser.supported
+            ? `PairBeam detected ${detectedBrowser.label}. Both participants must load the ${target.browserName} extension and reload the room.`
+            : `${detectedBrowser.label} does not support this desktop companion flow. Open PairBeam in desktop Firefox or a Chromium browser.`}
+        </p>
+        {!compact && target && detectedBrowser.supported ? (
+          <>
+            <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-[11px] leading-5 text-amber-100/80">
+              {target.steps.map((step, index) => <li key={index}>{step}</li>)}
+            </ol>
+            {detectedBrowser.family === 'firefox' ? (
+              <p className="mt-2 text-[10px] leading-4 text-amber-100/65">
+                Firefox removes temporary add-ons when it restarts. Standard Firefox requires Mozilla signing for permanent installation.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {target && detectedBrowser.supported ? (
+            <a
+              href={target.archiveUrl}
+              download={target.downloadName}
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-amber-100 px-3 text-xs font-semibold text-amber-950 outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-amber-200"
+            >
+              Download for {target.browserName}
+            </a>
+          ) : (
+            Object.values(EXTENSION_TARGETS).map(downloadTarget => (
+              <a
+                key={downloadTarget.browserName}
+                href={downloadTarget.archiveUrl}
+                download={downloadTarget.downloadName}
+                className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-amber-100 px-3 text-xs font-semibold text-amber-950 outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-amber-200"
+              >
+                {downloadTarget.browserName}
+              </a>
+            ))
+          )}
+          {!compact && target && detectedBrowser.supported ? (
+            <a
+              href={alternateTarget.archiveUrl}
+              download={alternateTarget.downloadName}
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-amber-200/25 bg-amber-100/10 px-3 text-xs font-medium text-amber-50 outline-none transition-colors hover:bg-amber-100/15 focus-visible:ring-2 focus-visible:ring-amber-200"
+            >
+              Download for {alternateTarget.browserName}
+            </a>
+          ) : null}
+          <a
+            href={EXTENSION_GUIDE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-amber-200/25 bg-amber-100/10 px-3 text-xs font-medium text-amber-50 outline-none transition-colors hover:bg-amber-100/15 focus-visible:ring-2 focus-visible:ring-amber-200"
+          >
+            Installation help <ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default function ExternalWatchParty({ isIdle }) {
   const {
