@@ -75,6 +75,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.source === 'vidking-player' && message.type === 'user-activity') {
+    if (Number.isInteger(state.pairbeamFrameId)) {
+      sendToFrame(tabId, state.pairbeamFrameId, {
+        target: 'pairbeam-bridge',
+        type: 'user-activity',
+      });
+    }
+    return false;
+  }
+
   return false;
 });
 

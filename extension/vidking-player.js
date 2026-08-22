@@ -4,6 +4,21 @@ let pendingCommand = null;
 let desiredPlayback = null;
 let lastProgressAt = 0;
 let resumeAfterUserSeek = false;
+let lastActivityAt = 0;
+
+const reportUserActivity = () => {
+  const now = performance.now();
+  if (now - lastActivityAt < 250) return;
+  lastActivityAt = now;
+  chrome.runtime.sendMessage({
+    source: 'vidking-player',
+    type: 'user-activity',
+  }, () => void chrome.runtime.lastError);
+};
+
+window.addEventListener('pointermove', reportUserActivity, { passive: true });
+window.addEventListener('pointerdown', reportUserActivity, { passive: true });
+window.addEventListener('keydown', reportUserActivity);
 
 const isExpectedPlaybackInterruption = error => (
   error?.name === 'AbortError'

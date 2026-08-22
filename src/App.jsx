@@ -8,7 +8,6 @@ import { useWebRTC } from './context/useWebRTC';
 import { Check, Copy, Users } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { ConnectionHealth } from './components/ConnectionHealth';
-import { shouldIgnoreIdleActivity } from './lib/idleActivity';
 
 const ExternalWatchParty = React.lazy(() => import('./components/ExternalWatchParty'));
 
@@ -28,8 +27,7 @@ const MainApp = () => {
   
   useEffect(() => {
     let timeout;
-    const resetIdle = (event) => {
-      if (shouldIgnoreIdleActivity(event?.target)) return;
+    const resetIdle = () => {
       setIsIdle(false);
       clearTimeout(timeout);
       timeout = setTimeout(() => setIsIdle(true), 3000);
@@ -38,12 +36,14 @@ const MainApp = () => {
     window.addEventListener('pointermove', resetIdle, { passive: true });
     window.addEventListener('pointerdown', resetIdle, { passive: true });
     window.addEventListener('keydown', resetIdle);
+    window.addEventListener('pairbeam-user-activity', resetIdle);
     resetIdle();
 
     return () => {
       window.removeEventListener('pointermove', resetIdle);
       window.removeEventListener('pointerdown', resetIdle);
       window.removeEventListener('keydown', resetIdle);
+      window.removeEventListener('pairbeam-user-activity', resetIdle);
       clearTimeout(timeout);
     };
   }, []);

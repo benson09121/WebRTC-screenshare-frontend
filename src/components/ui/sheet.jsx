@@ -15,18 +15,18 @@ export const SheetContent = React.forwardRef(function SheetContent({
 }, ref) {
   const fullscreenContainer = typeof document === 'undefined' ? undefined : document.fullscreenElement || undefined;
   const sideClasses = {
-    left: 'inset-y-0 left-0 h-full w-[min(23rem,92vw)] border-r data-[state=open]:animate-[sheet-left-in_220ms_cubic-bezier(0.215,0.61,0.355,1)] data-[state=closed]:animate-[sheet-left-out_180ms_cubic-bezier(0.215,0.61,0.355,1)]',
-    right: 'inset-y-0 right-0 h-full w-[min(24rem,90vw)] border-l',
-    bottom: 'inset-x-0 bottom-0 max-h-[82dvh] rounded-t-3xl border-t data-[state=open]:animate-[sheet-bottom-in_220ms_cubic-bezier(0.215,0.61,0.355,1)] data-[state=closed]:animate-[sheet-bottom-out_180ms_cubic-bezier(0.215,0.61,0.355,1)]',
+    left: 'inset-y-0 left-0 h-full w-[min(23rem,92vw)] border-r data-[state=open]:animate-[sheet-left-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-left-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
+    right: 'inset-y-0 right-0 h-full w-[min(24rem,90vw)] border-l data-[state=open]:animate-[sheet-right-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-right-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
+    bottom: 'inset-x-0 bottom-0 max-h-[82dvh] rounded-t-3xl border-t data-[state=open]:animate-[sheet-bottom-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-bottom-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
   };
 
   return (
     <DialogPrimitive.Portal container={fullscreenContainer}>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-[110] bg-black/65 backdrop-blur-sm data-[state=open]:animate-[sheet-overlay-in_220ms_cubic-bezier(0.215,0.61,0.355,1)] data-[state=closed]:animate-[sheet-overlay-out_180ms_cubic-bezier(0.215,0.61,0.355,1)]" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-[110] bg-black/65 backdrop-blur-sm data-[state=open]:animate-[sheet-overlay-in_240ms_ease-out_both] data-[state=closed]:animate-[sheet-overlay-out_180ms_ease-out_both]" />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          'fixed z-[120] overflow-y-auto border-border bg-panel p-5 text-foreground shadow-2xl outline-none',
+          'fixed z-[120] overflow-y-auto border-border bg-panel p-5 text-foreground shadow-2xl outline-none will-change-transform motion-reduce:animate-none',
           sideClasses[side] || sideClasses.right,
           className,
         )}

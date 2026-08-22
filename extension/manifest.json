@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PairBeam Vidking Sync Prototype",
   "description": "Connects PairBeam watch rooms to a Vidking player without reading or relaying its media URL.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "permissions": [
     "tabs",
     "webNavigation"

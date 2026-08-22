@@ -1,32 +1,29 @@
 # PairBeam Vidking Sync Prototype
 
-This packed Chrome extension lets PairBeam observe and control the ordinary video element inside a Vidking embed. It sends only playback events and commands (play, pause, seek, position) through PairBeam's existing WebRTC data channel. It does not discover, copy, proxy, download, or relay the provider's media URL.
+This unpacked Chrome extension lets PairBeam observe and control the ordinary video element inside a Vidking embed. It sends only playback events and commands (play, pause, seek, position) through PairBeam's existing WebRTC data channel. It does not discover, copy, proxy, download, or relay the provider's media URL.
 
-## Install the packaged extension
+## Install the downloaded extension
 
 Both participants must install the extension.
 
-1. Download `pairbeam-extension.crx` from PairBeam.
-2. Open `chrome://extensions` in Chrome.
-3. Turn on **Developer mode**.
-4. Drag the downloaded `.crx` onto the extensions page and confirm.
-5. Reload the PairBeam tab.
+1. Download `pairbeam-extension.zip` from PairBeam.
+2. Extract the ZIP to a permanent folder. Do not delete that folder while using the extension.
+3. Open `chrome://extensions` in Chrome.
+4. Turn on **Developer mode**.
+5. Choose **Load unpacked**.
+6. Select the extracted `extension` folder containing `manifest.json`.
+7. Reload the PairBeam tab.
 
-If Chrome rejects a directly installed `.crx`, use the unpacked fallback:
-
-1. Open `chrome://extensions` in Chrome.
-2. Turn on **Developer mode**.
-3. Choose **Load unpacked**.
-4. Select this `frontend/extension` directory.
-5. Reload the PairBeam tab after installing or updating the extension.
+Chrome may report `CRX_REQUIRED_PROOF_MISSING` for a privately packed `.crx`. PairBeam therefore does not offer direct CRX installation. The ZIP is source code for Chrome's documented **Load unpacked** workflow and does not attempt to install anything automatically.
 
 For a custom production domain, add its exact HTTPS match pattern to the PairBeam entry in `manifest.json`, reload the extension, and reload PairBeam. The included patterns support localhost, `127.0.0.1`, and Vercel preview/production subdomains.
 
-Keep `extension.pem` private. It is the owner's signing key for repacking the same extension identity and is not an installation file.
+The download never includes `extension.pem` or a `.crx` package.
 
 ## Current scope
 
 - Chrome/Chromium with Vidking movie and exact TV episode embeds is the supported experimental combination. PairBeam chooses the episode before loading the provider and disables Vidking's internal episode switching for synchronized sessions.
+- Pointer and keyboard activity inside the cross-origin player is forwarded to PairBeam so its fullscreen controls can follow the same 3-second inactivity timer as the rest of the room UI.
 - The person who proposes the title is the playback authority. The other participant's controls become requests that the authority applies and broadcasts back.
 - Autoplay rules can require each participant to press play once.
 - Vidking rejects iframe sandbox restrictions, so the embed cannot use the browser's sandbox attribute. While an accepted watch session is active, the extension closes new top-level targets created by provider subframes instead.

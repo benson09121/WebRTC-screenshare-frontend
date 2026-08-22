@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { ArrowLeft, CalendarDays, Clock3, Film, ListVideo, Play, Search, Star, X } from 'lucide-react';
 import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from './ui/sheet';
 import { tmdbCatalog } from '../lib/catalogApi';
@@ -95,7 +95,7 @@ const EpisodeList = ({ episodes, status, error, onWatch }) => {
     <ol className="grid gap-3">
       {episodes.map(episode => (
         <li key={episode.id || `${episode.seasonNumber}-${episode.episodeNumber}`}>
-          <article className="grid gap-3 rounded-2xl border border-border bg-white/[0.025] p-3 sm:grid-cols-[11rem_1fr]">
+          <article className="motion-content-swap grid gap-3 rounded-2xl border border-border bg-white/[0.025] p-3 sm:grid-cols-[11rem_1fr]">
             <EpisodeStill episode={episode} />
             <div className="flex min-w-0 flex-col">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -249,11 +249,14 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
     episodeTitle: episode.title || `Episode ${episode.episodeNumber}`,
   });
 
-  if (!open) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Watch catalog" data-idle-exempt="true">
-      <section className="flex h-[min(94dvh,56rem)] min-h-0 w-full max-w-6xl flex-col overflow-hidden rounded-t-3xl border border-border bg-panel shadow-2xl sm:rounded-3xl">
+  return (
+    <Dialog open={open} onOpenChange={nextOpen => { if (!nextOpen) onClose(); }}>
+      <DialogContent
+        showClose={false}
+        className="catalog-dialog-surface flex h-[min(94dvh,56rem)] min-h-0 w-full max-w-6xl flex-col overflow-hidden rounded-t-3xl border border-border bg-panel shadow-2xl sm:rounded-3xl"
+        aria-describedby="watch-catalog-description"
+        data-idle-exempt="true"
+      >
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 sm:px-6">
           {selected ? (
             <Button variant="ghost" size="icon" onClick={() => { setSelected(null); setError(''); setProposalError(''); }} aria-label="Back to catalog search"><ArrowLeft className="size-4" /></Button>
@@ -261,14 +264,14 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
             <div className="grid size-9 place-items-center rounded-xl bg-teal-300/10 text-teal-200"><Film className="size-4" /></div>
           )}
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-foreground">{selected ? selected.title : 'Find something to watch'}</h2>
-            <p className="text-xs text-subtle-foreground">Browse titles to propose for the room</p>
+            <DialogTitle className="truncate text-sm font-semibold text-foreground">{selected ? selected.title : 'Find something to watch'}</DialogTitle>
+            <DialogDescription id="watch-catalog-description" className="text-xs text-subtle-foreground">Browse titles to propose for the room</DialogDescription>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close catalog"><X className="size-4" /></Button>
         </header>
 
         {selected ? (
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="motion-content-swap min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {detailStatus === 'loading' ? (
               <div className="h-56 animate-pulse rounded-2xl bg-white/[0.06]" role="status" aria-label="Loading title details" />
             ) : detailStatus === 'error' ? (
@@ -325,7 +328,7 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
             )}
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto p-4 sm:p-6">
+          <div className="motion-content-swap min-h-0 flex-1 overscroll-contain overflow-y-auto p-4 sm:p-6">
             <div className="sticky top-0 z-10 -mx-4 -mt-4 bg-panel/95 px-4 pb-3 pt-4 backdrop-blur-md sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-600" aria-hidden="true" />
@@ -343,7 +346,7 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
                 <>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                     {results.map(item => (
-                      <button type="button" key={`${item.mediaType}-${item.id}`} onClick={() => openDetail(item)} className="group min-w-0 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-focus">
+                      <button type="button" key={`${item.mediaType}-${item.id}`} onClick={() => openDetail(item)} className="motion-result-card group min-w-0 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-focus">
                         <Poster item={item} className="transition-transform duration-200 motion-reduce:transition-none group-hover:scale-[1.02]" />
                         <p className="mt-2 truncate text-sm font-medium text-zinc-200 group-hover:text-teal-200">{item.title}</p>
                         <div className="mt-1 flex items-center gap-2 text-[11px] text-subtle-foreground"><span>{mediaLabel(item.mediaType)}</span><span>{yearOf(item.releaseDate)}</span><Rating item={item} /></div>
@@ -366,8 +369,7 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
           <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">TMDB metadata</a>
           {' · '}This product uses the TMDB API but is not endorsed or certified by TMDB.
         </footer>
-      </section>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 };

@@ -50,6 +50,7 @@ chrome.runtime.onMessage.addListener(message => {
     postToPage({ type: 'status', detected: true, playerReady: Boolean(message.playerReady) });
   }
   if (message.type === 'player-event') postToPage({ type: 'player-event', event: message.event });
+  if (message.type === 'user-activity') postToPage({ type: 'user-activity' });
   if (message.type === 'popup-blocked') postToPage({ type: 'popup-blocked' });
 });
 

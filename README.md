@@ -106,20 +106,20 @@ VITE_TURN_PASSWORD=deployment-credential
 
 The catalog intentionally runs entirely in the frontend. `VITE_TMDB_READ_ACCESS_TOKEN` is therefore embedded in the public Vite bundle and visible to visitors. Use only a restricted, replaceable TMDB application read token—never a TMDB user/session credential. Catalog results are metadata only and do not imply that PairBeam or another provider can play that title.
 
-Vidking does not expose the complete inbound play/pause/seek contract PairBeam needs from an ordinary cross-origin page. The repository therefore includes a Chrome-first companion-extension prototype for controlled personal testing. PairBeam distributes the packed `.crx`; the unpacked source remains available as a fallback. It observes the provider's ordinary video element and transports only playback commands through PairBeam; it does not extract, proxy, download, or WebRTC-relay provider media. Vidsrc.sbs remains unsupported because its changing nested player origins have not passed this control and security model. Technical embeddability does not establish content distribution rights.
+Vidking does not expose the complete inbound play/pause/seek contract PairBeam needs from an ordinary cross-origin page. The repository therefore includes a Chrome-first companion-extension prototype for controlled personal testing. PairBeam distributes a ZIP of the unpacked extension source for manual installation through Chrome Developer mode. It observes the provider's ordinary video element and transports only playback commands through PairBeam; it does not extract, proxy, download, or WebRTC-relay provider media. Vidsrc.sbs remains unsupported because its changing nested player origins have not passed this control and security model. Technical embeddability does not establish content distribution rights.
 
 ## Test the experimental Vidking synchronization
 
-Both participants must use Chrome/Chromium and install the extension. The missing-extension warning in PairBeam provides the packaged `.crx` download:
+Both participants must use Chrome/Chromium and manually load the extension. The missing-extension warning in PairBeam provides the unpacked-source ZIP:
 
-1. Download `pairbeam-extension.crx` from PairBeam.
+1. Download and extract `pairbeam-extension.zip` from PairBeam.
 2. Open `chrome://extensions` and enable **Developer mode**.
-3. Drag the downloaded `.crx` onto the extensions page and confirm installation.
+3. Choose **Load unpacked** and select the extracted `extension` folder containing `manifest.json`.
 4. Reload PairBeam in both browsers.
 5. Join the same room and open **Share a movie → Browse catalog**. Select a movie, or select a TV series followed by an exact season and episode.
 6. The other participant reviews the third-party disclosure and accepts the invitation.
 
-If Chrome refuses a directly installed `.crx`, use the fallback developer flow: download/clone the repository, choose **Load unpacked** on `chrome://extensions`, and select the [`extension`](./extension) directory. If PairBeam uses a custom production domain, first add its exact HTTPS match pattern to `extension/manifest.json`. After installing or changing the allowed origin, reload the extension and PairBeam. The private `extension.pem` key must never be shared or committed; it is needed only by the owner when repacking the same extension identity.
+PairBeam does not trigger installation and does not distribute a `.crx`; privately packed CRX files can be rejected with `CRX_REQUIRED_PROOF_MISSING`. The user explicitly selects the extracted folder through Chrome's **Load unpacked** action. If PairBeam uses a custom production domain, first add its exact HTTPS match pattern to `extension/manifest.json`. After installing or changing the allowed origin, reload the extension and PairBeam. The ZIP contains neither a private signing key nor hidden installation code.
 
 The proposer is the authoritative player. Actions from the other participant are requests applied by that player and then broadcast back with an increasing revision. Volume remains local, so each participant can choose a different level. Autoplay policy may require each person to click the provider player once. See the [extension test notes](./extension/README.md) for current limitations.
 
@@ -131,7 +131,9 @@ Timeline seeking uses a short synchronization barrier: playback pauses, the auth
 
 Vidking rejects iframe sandbox restrictions, so PairBeam does not add an incompatible `sandbox` attribute to this experimental embed. Extension version 0.3 closes new top-level targets created by provider subframes during an accepted watch session and adds coordinated seeking. This is popup-tab protection, not generic ad removal: advertising rendered inside the player is controlled by the provider and is not scraped or hidden by PairBeam.
 
-Use PairBeam's labelled top-right **Fullscreen** button for the integrated watch-party view. It fullscreens the PairBeam root so chat, episode navigation, the participant camera, and the bottom call dashboard stay available. Native fullscreen permission is intentionally not granted to the cross-origin provider frame because the browser would place that frame above every PairBeam control. In fullscreen, the bottom-center arrow controls the mic, camera, screen-share, movie, and leave dashboard. The episode trigger and top-right fullscreen/stop actions stay independently available and fade when idle instead of disappearing; hovering or focusing restores them. In the ordinary room, opening chat overlays playback without shrinking the stage. The participant camera can be dragged within the stage, while focusing it requires the explicit Focus button so a drag cannot accidentally replace the movie.
+Use PairBeam's labelled top-right **Fullscreen** button for the integrated watch-party view. It fullscreens the PairBeam root so chat, episode navigation, the participant camera, and the bottom call dashboard stay available. Native fullscreen permission is intentionally not granted to the cross-origin provider frame because the browser would place that frame above every PairBeam control. In fullscreen, the bottom-center arrow controls the mic, camera, screen-share, movie, and leave dashboard. After three seconds without pointer or keyboard activity, the chat launcher or panel, episode trigger, dashboard and its arrow, plus the fullscreen and stop-watching actions fade out and stop accepting input; a hidden chat panel also releases its reserved stage space. Activity anywhere in PairBeam or inside the provider player restores them. In the ordinary room, opening chat overlays playback without shrinking the stage. The participant camera can be dragged within the stage, while focusing it requires the explicit Focus button so a drag cannot accidentally replace the movie.
+
+Room surfaces share a short reduced-motion-aware animation system: chat and source selection ease rather than snap, catalog dialogs complete their fade/scale exit before unmounting, episode drawers slide from their edge with a restrained settle, and settings popovers expand from their trigger.
 
 ## Production notes
 

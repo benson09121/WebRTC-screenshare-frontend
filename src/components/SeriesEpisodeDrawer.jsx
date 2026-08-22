@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from './ui/sheet';
 
 const episodeCode = episode => `S${String(episode.seasonNumber).padStart(2, '0')} E${String(episode.episodeNumber).padStart(2, '0')}`;
 
-export const SeriesEpisodeDrawer = ({ media, onSelect, dimmed = false }) => {
+export const SeriesEpisodeDrawer = ({ media, onSelect, hidden = false }) => {
   const [open, setOpen] = useState(false);
   const [seasons, setSeasons] = useState([]);
   const [selectedSeason, setSelectedSeason] = useState(media?.season || 1);
@@ -19,6 +19,10 @@ export const SeriesEpisodeDrawer = ({ media, onSelect, dimmed = false }) => {
   useEffect(() => {
     setSelectedSeason(media?.season || 1);
   }, [media?.season, media?.tmdbId]);
+
+  useEffect(() => {
+    if (hidden) setOpen(false);
+  }, [hidden]);
 
   useEffect(() => {
     if (!open || media?.mediaType !== 'tv') return undefined;
@@ -102,7 +106,9 @@ export const SeriesEpisodeDrawer = ({ media, onSelect, dimmed = false }) => {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <div
-        className={`absolute left-0 top-1/2 z-50 -translate-y-1/2 transition-opacity duration-200 ease-out hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none ${dimmed ? 'opacity-30' : 'opacity-100'}`}
+        className={`absolute left-0 top-1/2 z-50 -translate-y-1/2 transition-opacity duration-200 ease-out motion-reduce:transition-none ${hidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+        aria-hidden={hidden}
+        inert={hidden}
       >
         <Button
           variant="secondary"

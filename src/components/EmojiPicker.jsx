@@ -53,7 +53,6 @@ export const EmojiPicker = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        data-idle-ignore="true"
         data-chat-emoji-picker="true"
         align={align}
         side={side}

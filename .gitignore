@@ -12,8 +12,10 @@ dist
 dist-ssr
 *.local
 
-# Chrome extension signing key. Keep this private and outside deployments.
+# Private Chrome extension packaging files. PairBeam distributes only the
+# unpacked-source ZIP; neither file below belongs in a deployment.
 extension.pem
+extension.crx
 
 # Editor directories and files
 .vscode/*

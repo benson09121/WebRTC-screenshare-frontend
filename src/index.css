@@ -88,23 +88,173 @@ textarea {
 }
 
 @keyframes sheet-left-in {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+  0% { opacity: 0; transform: translateX(-100%); }
+  72% { opacity: 1; transform: translateX(6px); }
+  100% { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes sheet-left-out {
-  from { transform: translateX(0); }
-  to { transform: translateX(-100%); }
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-100%); }
+}
+
+@keyframes sheet-right-in {
+  0% { opacity: 0; transform: translateX(100%); }
+  72% { opacity: 1; transform: translateX(-6px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sheet-right-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
 }
 
 @keyframes sheet-bottom-in {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  0% { opacity: 0; transform: translateY(100%); }
+  72% { opacity: 1; transform: translateY(-6px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes sheet-bottom-out {
-  from { transform: translateY(0); }
-  to { transform: translateY(100%); }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(100%); }
+}
+
+.motion-dialog-overlay[data-state="open"] {
+  animation: sheet-overlay-in 240ms ease-out both;
+}
+
+.motion-dialog-overlay[data-state="closed"] {
+  animation: sheet-overlay-out 180ms ease-out both;
+}
+
+.catalog-dialog-surface {
+  inset-inline: 0;
+  bottom: 0;
+  transform-origin: bottom center;
+  will-change: transform, opacity;
+}
+
+.catalog-dialog-surface[data-state="open"] {
+  animation: catalog-dialog-mobile-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.catalog-dialog-surface[data-state="closed"] {
+  animation: catalog-dialog-mobile-out 190ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes catalog-dialog-mobile-in {
+  0% { opacity: 0; transform: translateY(28px) scale(0.975); }
+  74% { opacity: 1; transform: translateY(-3px) scale(1.003); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes catalog-dialog-mobile-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(18px) scale(0.985); }
+}
+
+.motion-popover {
+  transform-origin: var(--radix-popover-content-transform-origin);
+  will-change: transform, opacity;
+}
+
+.motion-popover[data-state="open"] {
+  animation: popover-in 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.motion-popover[data-state="closed"] {
+  animation: popover-out 140ms ease-out both;
+}
+
+@keyframes popover-in {
+  0% { opacity: 0; transform: translateY(5px) scale(0.96); }
+  75% { opacity: 1; transform: translateY(-1px) scale(1.006); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes popover-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(3px) scale(0.975); }
+}
+
+.motion-tooltip {
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+  will-change: transform, opacity;
+}
+
+.motion-tooltip[data-state="delayed-open"] {
+  animation: tooltip-in 140ms ease-out both;
+}
+
+.motion-tooltip[data-state="instant-open"] {
+  animation: none;
+}
+
+.motion-tooltip[data-state="closed"] {
+  animation: tooltip-out 100ms ease-out both;
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateY(2px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes tooltip-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(1px) scale(0.985); }
+}
+
+.motion-content-swap {
+  animation: content-swap-in 220ms ease-out both;
+}
+
+.motion-result-card {
+  animation: result-card-in 240ms ease-out both;
+}
+
+.motion-result-card:nth-child(2n) { animation-delay: 18ms; }
+.motion-result-card:nth-child(3n) { animation-delay: 36ms; }
+.motion-result-card:nth-child(5n) { animation-delay: 54ms; }
+
+@keyframes content-swap-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes result-card-in {
+  from { opacity: 0; transform: translateY(7px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (min-width: 640px) {
+  .catalog-dialog-surface {
+    inset-inline: auto;
+    bottom: auto;
+    left: 50%;
+    top: 50%;
+    width: calc(100% - 2rem);
+    transform-origin: center;
+  }
+
+  .catalog-dialog-surface[data-state="open"] {
+    animation-name: catalog-dialog-desktop-in;
+  }
+
+  .catalog-dialog-surface[data-state="closed"] {
+    animation-name: catalog-dialog-desktop-out;
+  }
+}
+
+@keyframes catalog-dialog-desktop-in {
+  0% { opacity: 0; transform: translate(-50%, calc(-50% + 18px)) scale(0.97); }
+  74% { opacity: 1; transform: translate(-50%, calc(-50% - 2px)) scale(1.003); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes catalog-dialog-desktop-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, calc(-50% + 12px)) scale(0.985); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -211,13 +211,14 @@ export const Chat = ({ isIdle }) => {
     ? 'right-3 top-[calc(50%+3.25rem)] sm:right-5'
     : 'bottom-[8.5rem] right-3 sm:bottom-[4.75rem] sm:right-5';
 
-  const launcherHidden = isChatOpen || (isIdle && unreadCount === 0 && !isFullscreen);
+  const fullscreenChatHidden = isFullscreen && isIdle;
+  const launcherHidden = isChatOpen || fullscreenChatHidden || (isIdle && unreadCount === 0 && !isFullscreen);
+  const chatPanelVisible = isChatOpen && !fullscreenChatHidden;
 
   return (
     <>
       <Button
         ref={launcherRef}
-        data-idle-ignore="true"
         variant="secondary"
         onClick={() => setIsChatOpen(true)}
         className={`fixed z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherPlacement} ${launcherHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
@@ -234,9 +235,8 @@ export const Chat = ({ isIdle }) => {
         ) : null}
       </Button>
 
-      {showNotification && !isChatOpen ? (
+      {showNotification && !isChatOpen && !fullscreenChatHidden ? (
         <div
-          data-idle-ignore="true"
           className={`fixed z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl ${notificationPlacement}`}
           role="status"
           aria-live="polite"
@@ -267,13 +267,12 @@ export const Chat = ({ isIdle }) => {
       ) : null}
 
       <aside
-        data-idle-ignore="true"
-        className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111719]/97 shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${panelPlacement} ${isChatOpen ? 'translate-y-0 scale-100 opacity-100' : 'pointer-events-none translate-y-2 scale-[0.98] opacity-0'}`}
+        className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111719]/97 shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-[opacity,transform] will-change-transform motion-reduce:transition-none ${panelPlacement} ${chatPanelVisible ? 'translate-y-0 scale-100 opacity-100 duration-[260ms] ease-[cubic-bezier(0.16,1.08,0.3,1)]' : 'pointer-events-none translate-y-3 scale-[0.97] opacity-0 duration-[180ms] ease-out'}`}
         role="dialog"
         aria-labelledby="room-chat-title"
         aria-describedby="room-chat-description"
-        aria-hidden={!isChatOpen}
-        inert={!isChatOpen}
+        aria-hidden={!chatPanelVisible}
+        inert={!chatPanelVisible}
       >
         <header className="flex min-h-[4.5rem] items-center justify-between gap-3 border-b border-white/[0.08] px-4">
           <div className="min-w-0">

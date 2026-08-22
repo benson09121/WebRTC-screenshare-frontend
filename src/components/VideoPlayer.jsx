@@ -275,7 +275,7 @@ export const VideoPlayer = ({ isIdle }) => {
   useEffect(() => {
     const video = remoteCameraVideoRef.current;
     if (video && video.srcObject !== remoteStream) video.srcObject = remoteStream || null;
-  }, [remoteStream, remoteCameraOff, selectedView]);
+  }, [externalWatchSession, remoteStream, remoteCameraOff, selectedView]);
 
   useEffect(() => {
     const audio = remoteAudioRef.current;
@@ -468,7 +468,7 @@ export const VideoPlayer = ({ isIdle }) => {
     <TooltipProvider delayDuration={250}>
       <main
         ref={containerRef}
-        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-canvas'} ${isChatOpen && (isFullscreen || isPresentationMode) ? 'call-stage--chat-docked' : ''}`}
+        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-canvas'} ${isChatOpen && (isPresentationMode || (isFullscreen && !isIdle)) ? 'call-stage--chat-docked' : ''}`}
       >
         <audio ref={remoteAudioRef} autoPlay aria-label="Participant audio" />
         {pictureInPictureError ? (
@@ -698,7 +698,7 @@ export const VideoPlayer = ({ isIdle }) => {
             dragConstraints={containerRef}
             dragElastic={0}
             dragMomentum={false}
-            className={`group/pip absolute left-4 top-24 z-40 aspect-video w-48 cursor-grab touch-none overflow-hidden rounded-xl border border-white/10 bg-[#111719] shadow-2xl transition-opacity active:cursor-grabbing sm:left-7 sm:w-64 ${controlsHidden && !externalWatchSession ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+            className={`group/pip fixed left-4 top-24 z-[80] aspect-video w-48 cursor-grab touch-none overflow-hidden rounded-xl border border-white/10 bg-[#111719] shadow-2xl transition-opacity active:cursor-grabbing sm:left-7 sm:w-64 ${controlsHidden && !externalWatchSession ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
             role="group"
             aria-label="Movable participant camera preview"
           >

@@ -173,6 +173,7 @@ export const ControlPanel = ({
   const [, setMovieProgress] = useState({ currentTime: 0, duration: 0, isPlaying: false });
   const [showMovieSourcePicker, setShowMovieSourcePicker] = useState(false);
   const [showWatchCatalog, setShowWatchCatalog] = useState(false);
+  const [hasOpenedWatchCatalog, setHasOpenedWatchCatalog] = useState(false);
   const [directMediaUrl, setDirectMediaUrl] = useState('');
   const [isLoadingDirectMedia, setIsLoadingDirectMedia] = useState(false);
   const [selectedSubtitle, setSelectedSubtitle] = useState(null);
@@ -1324,7 +1325,9 @@ export const ControlPanel = ({
     setShowMovieSourcePicker(false);
   }, [isFullscreen, setFullscreenDashboardOpen]);
 
-  const dashboardHidden = isPresentationMode || (isFullscreen ? !fullscreenDashboardOpen : isIdle);
+  const dashboardHidden = isPresentationMode || (isFullscreen ? isIdle || !fullscreenDashboardOpen : isIdle);
+  const fullscreenHandleHidden = isFullscreen && isIdle;
+  const movieSourcePickerVisible = showMovieSourcePicker && localShareSource?.kind !== 'movie' && !activeSettingsMenu;
 
   const toggleFullscreenDashboard = () => {
     setFullscreenDashboardOpen(current => {
@@ -1375,8 +1378,13 @@ export const ControlPanel = ({
         aria-hidden="true"
       />
 
-      {showMovieSourcePicker && localShareSource?.kind !== 'movie' && !activeSettingsMenu ? (
-        <aside className="absolute bottom-20 left-1/2 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl" aria-label="Choose a movie source">
+      {localShareSource?.kind !== 'movie' ? (
+        <aside
+          className={`absolute bottom-20 left-1/2 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-[opacity,transform] will-change-transform motion-reduce:transition-none ${movieSourcePickerVisible ? 'translate-y-0 scale-100 opacity-100 duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)]' : 'pointer-events-none translate-y-3 scale-[0.975] opacity-0 duration-[170ms] ease-out'}`}
+          aria-label="Choose a movie source"
+          aria-hidden={!movieSourcePickerVisible}
+          inert={!movieSourcePickerVisible}
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-sm font-medium text-zinc-100">Share a movie</h3>
@@ -1392,7 +1400,7 @@ export const ControlPanel = ({
             Choose a video file
           </Button>
 
-          <Button variant="secondary" className="w-full" onClick={() => { setShowWatchCatalog(true); setShowMovieSourcePicker(false); }}>
+          <Button variant="secondary" className="w-full" onClick={() => { setHasOpenedWatchCatalog(true); setShowWatchCatalog(true); setShowMovieSourcePicker(false); }}>
             <Film className="size-4" />
             Browse catalog
           </Button>
@@ -1430,16 +1438,16 @@ export const ControlPanel = ({
         </aside>
       ) : null}
 
-      {showWatchCatalog ? (
+      {hasOpenedWatchCatalog ? (
         <React.Suspense fallback={(
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-sm" role="status" aria-live="polite">
+          showWatchCatalog ? <div className="motion-dialog-overlay fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-sm" role="status" aria-live="polite">
             <div className="rounded-2xl border border-border bg-panel px-5 py-4 text-sm text-muted-foreground shadow-2xl">
               Opening catalog…
             </div>
-          </div>
+          </div> : null
         )}>
           <WatchCatalog
-            open
+            open={showWatchCatalog}
             onClose={() => setShowWatchCatalog(false)}
             onProposal={item => proposeExternalWatch({
               providerId: 'vidking-extension',
@@ -1771,14 +1779,15 @@ export const ControlPanel = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            data-idle-ignore="true"
             variant="secondary"
             size="icon"
-            className="absolute bottom-3 left-1/2 z-[70] size-10 -translate-x-1/2 rounded-full border-white/15 bg-[#111719]/92 shadow-[0_12px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+            className={`absolute bottom-3 left-1/2 z-[70] size-10 -translate-x-1/2 rounded-full border-white/15 bg-[#111719]/92 shadow-[0_12px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl transition-opacity duration-200 ease-out motion-reduce:transition-none ${fullscreenHandleHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
             onClick={toggleFullscreenDashboard}
             aria-label={fullscreenDashboardOpen ? 'Hide call dashboard' : 'Show call dashboard'}
             aria-controls="call-dashboard"
             aria-expanded={fullscreenDashboardOpen}
+            aria-hidden={fullscreenHandleHidden}
+            inert={fullscreenHandleHidden}
           >
             {fullscreenDashboardOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           </Button>

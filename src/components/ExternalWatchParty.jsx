@@ -3,7 +3,7 @@ import { AlertTriangle, Check, ExternalLink, Film, LoaderCircle, Maximize, Minim
 import { useWebRTC } from '../context/useWebRTC';
 import { buildVidkingEmbedUrl } from '../lib/externalWatchProtocol';
 import { Button } from './ui/button';
-import extensionDownloadUrl from '../../extension.crx?url&no-inline';
+import extensionArchiveUrl from '../../pairbeam-extension.zip?url&no-inline';
 import { SeriesEpisodeDrawer } from './SeriesEpisodeDrawer';
 
 const PAGE_CHANNEL = 'pairbeam-page';
@@ -44,22 +44,23 @@ const ExtensionInstallNotice = ({ compact = false }) => (
     <Puzzle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
     <div className="min-w-0">
       <p className="text-xs font-semibold">PairBeam extension required</p>
-      <p className="mt-1 text-[11px] leading-5 text-amber-100/80">Both participants must install the packaged Chrome extension and reload the room.</p>
+      <p className="mt-1 text-[11px] leading-5 text-amber-100/80">Both participants must load the downloaded extension folder in Chrome and reload the room.</p>
       {!compact ? (
         <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-[11px] leading-5 text-amber-100/80">
-          <li>Download the PairBeam `.crx` file.</li>
+          <li>Download and extract the PairBeam extension ZIP.</li>
           <li>Open `chrome://extensions` and enable Developer mode.</li>
-          <li>Drag the downloaded file onto that page and confirm.</li>
+          <li>Choose <strong>Load unpacked</strong>.</li>
+          <li>Select the extracted `extension` folder.</li>
           <li>Reload PairBeam after installation.</li>
         </ol>
       ) : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <a
-          href={extensionDownloadUrl}
-          download="pairbeam-extension.crx"
+          href={extensionArchiveUrl}
+          download="pairbeam-extension.zip"
           className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-amber-100 px-3 text-xs font-semibold text-amber-950 outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-amber-200"
         >
-          Download extension
+          Download extension ZIP
         </a>
         <a
           href={EXTENSION_GUIDE_URL}
@@ -152,6 +153,10 @@ export default function ExternalWatchParty({ isIdle }) {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const message = event.data;
       if (!message || message.channel !== EXTENSION_CHANNEL) return;
+      if (message.type === 'user-activity') {
+        window.dispatchEvent(new Event('pairbeam-user-activity'));
+        return;
+      }
       if (message.type === 'status') {
         setExtensionDetected(Boolean(message.detected));
         setPlayerReady(Boolean(message.playerReady));
@@ -298,9 +303,9 @@ export default function ExternalWatchParty({ isIdle }) {
   }
 
   const embedUrl = buildVidkingEmbedUrl(externalWatchSession.media);
-  const externalControlsDimmed = isFullscreen && isIdle;
+  const externalControlsHidden = isFullscreen && isIdle;
   return (
-    <section className={`absolute inset-0 z-10 overflow-hidden bg-black ${isChatOpen && isFullscreen ? 'external-watch--chat-docked' : ''}`} aria-label={`Watching ${externalWatchSession.media.title}`} data-idle-exempt="true">
+    <section className={`absolute inset-0 z-10 overflow-hidden bg-black ${isChatOpen && isFullscreen && !isIdle ? 'external-watch--chat-docked' : ''}`} aria-label={`Watching ${externalWatchSession.media.title}`} data-idle-exempt="true">
       <iframe
         title={`Vidking player for ${externalWatchSession.media.title}`}
         src={embedUrl}
@@ -311,10 +316,12 @@ export default function ExternalWatchParty({ isIdle }) {
       <SeriesEpisodeDrawer
         media={externalWatchSession.media}
         onSelect={selectExternalWatchEpisode}
-        dimmed={externalControlsDimmed}
+        hidden={externalControlsHidden}
       />
       <div
-        className={`absolute right-4 top-4 z-50 flex gap-2 transition-opacity duration-200 ease-out hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none sm:right-6 sm:top-6 ${externalControlsDimmed ? 'opacity-25' : 'opacity-100'}`}
+        className={`absolute right-4 top-4 z-50 flex gap-2 transition-opacity duration-200 ease-out motion-reduce:transition-none sm:right-6 sm:top-6 ${externalControlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+        aria-hidden={externalControlsHidden}
+        inert={externalControlsHidden}
       >
           <Button variant="secondary" size="sm" className="h-9" onClick={toggleExternalFullscreen} aria-label={isFullscreen ? 'Exit PairBeam fullscreen' : 'Open PairBeam fullscreen'}>
             {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
