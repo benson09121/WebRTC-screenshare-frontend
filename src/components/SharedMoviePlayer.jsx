@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Captions, Languages, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { Captions, FilePlus2, Languages, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { formatMediaTime } from '../lib/movieShare';
 import { Button } from './ui/button';
 
-export const SharedMoviePlayer = ({ owner, source, hidden, onCommand, volume, onVolumeChange }) => {
+export const SharedMoviePlayer = ({ owner, source, hidden, onCommand, onAddSubtitle, volume, onVolumeChange }) => {
   const [seekValue, setSeekValue] = useState(source.currentTime || 0);
   const [isSeeking, setIsSeeking] = useState(false);
   const seekValueRef = useRef(source.currentTime || 0);
   const isSeekingRef = useRef(false);
+  const resumeAfterSeekRef = useRef(false);
 
   useEffect(() => {
     if (!isSeeking) {
@@ -16,11 +17,24 @@ export const SharedMoviePlayer = ({ owner, source, hidden, onCommand, volume, on
     }
   }, [isSeeking, source.currentTime]);
 
+  const beginSeek = () => {
+    if (isSeekingRef.current) return;
+    isSeekingRef.current = true;
+    setIsSeeking(true);
+    resumeAfterSeekRef.current = source.isPlaying === true;
+    if (resumeAfterSeekRef.current) onCommand(owner, { action: 'pause' });
+  };
+
   const commitSeek = () => {
     if (!isSeekingRef.current) return;
     isSeekingRef.current = false;
     setIsSeeking(false);
-    onCommand(owner, { action: 'seek', currentTime: seekValueRef.current });
+    onCommand(owner, {
+      action: 'seek',
+      currentTime: seekValueRef.current,
+      resumeAfterSeek: resumeAfterSeekRef.current,
+    });
+    resumeAfterSeekRef.current = false;
   };
 
   const audioTracks = Array.isArray(source.audioTracks) ? source.audioTracks : [];
@@ -65,11 +79,14 @@ export const SharedMoviePlayer = ({ owner, source, hidden, onCommand, volume, on
           step="0.1"
           value={Math.min(seekValue, duration || 0)}
           disabled={!duration}
+          onPointerDown={beginSeek}
+          onKeyDown={(event) => {
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) beginSeek();
+          }}
           onChange={(event) => {
+            beginSeek();
             const nextValue = Number(event.target.value);
-            isSeekingRef.current = true;
             seekValueRef.current = nextValue;
-            setIsSeeking(true);
             setSeekValue(nextValue);
           }}
           onPointerUp={commitSeek}
@@ -79,24 +96,25 @@ export const SharedMoviePlayer = ({ owner, source, hidden, onCommand, volume, on
           aria-label="Shared movie position"
         />
 
-        {owner === 'remote' ? (
-          <label className="flex shrink-0 items-center gap-1.5" title="Movie volume on this device">
-            <span className="sr-only">Shared movie volume</span>
-            {volume === 0
-              ? <VolumeX className="size-4 text-zinc-500" aria-hidden="true" />
-              : <Volume2 className="size-4 text-zinc-400" aria-hidden="true" />}
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={volume}
-              onChange={event => onVolumeChange(event.target.value)}
-              className="h-2 w-16 cursor-pointer accent-teal-300 sm:w-24"
-              aria-valuetext={volume === 0 ? 'Muted' : `${volume} percent`}
-            />
-          </label>
-        ) : null}
+        <label className="flex shrink-0 items-center gap-1.5" title="Movie volume on this device only">
+          <span className="sr-only">Shared movie volume on this device</span>
+          {volume === 0
+            ? <VolumeX className="size-4 text-zinc-500" aria-hidden="true" />
+            : <Volume2 className="size-4 text-zinc-400" aria-hidden="true" />}
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={volume}
+            onChange={event => onVolumeChange(event.target.value)}
+            className="h-2 w-16 cursor-pointer accent-teal-300 sm:w-24"
+            aria-valuetext={volume === 0 ? 'Muted' : `${volume} percent`}
+          />
+          <span className="w-8 text-right font-mono text-[10px] text-zinc-500" aria-hidden="true">
+            {volume}%
+          </span>
+        </label>
 
         <Button
           variant={source.subtitlesEnabled && source.subtitlesAvailable ? 'active' : 'secondary'}
@@ -111,6 +129,19 @@ export const SharedMoviePlayer = ({ owner, source, hidden, onCommand, volume, on
         >
           <Captions className="size-4" />
         </Button>
+
+        {owner === 'local' ? (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="size-9 shrink-0"
+            onClick={onAddSubtitle}
+            aria-label={source.subtitlesAvailable ? 'Load or replace an SRT subtitle file' : 'Add an SRT subtitle file'}
+            title={source.subtitlesAvailable ? 'Load or replace SRT' : 'Add SRT'}
+          >
+            <FilePlus2 className="size-4" />
+          </Button>
+        ) : null}
 
         {subtitleTracks.length > 1 ? (
           <label className="hidden min-w-0 items-center gap-1.5 text-xs text-zinc-500 md:flex">

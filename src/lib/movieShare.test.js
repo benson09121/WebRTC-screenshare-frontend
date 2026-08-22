@@ -10,6 +10,7 @@ import {
   getNativeSubtitleTrackOptions,
   getMovieDisplayName,
   getMovieVideoGeometry,
+  isExpectedPlaybackInterruption,
   normalizeDirectMediaUrl,
   parseSrt,
   selectNativeAudioTrack,
@@ -18,6 +19,12 @@ import {
   waitForCapturedTrack,
   waitForMovieFrame,
 } from './movieShare.js';
+
+test('treats a superseded play request as normal synchronization cancellation', () => {
+  assert.equal(isExpectedPlaybackInterruption({ name: 'AbortError' }), true);
+  assert.equal(isExpectedPlaybackInterruption(new Error('The play() request was interrupted by a call to pause().')), true);
+  assert.equal(isExpectedPlaybackInterruption(new Error('The decoder failed.')), false);
+});
 
 test('formats movie times without exposing invalid values', () => {
   assert.equal(formatMediaTime(Number.NaN), '0:00');

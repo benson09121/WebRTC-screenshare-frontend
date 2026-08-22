@@ -23,6 +23,7 @@ import {
   getScreenVideoLayout,
 } from '../lib/screenViewMode';
 import { getRemoteContentVolume } from '../lib/playbackVolume';
+import { isExpectedPlaybackInterruption } from '../lib/movieShare';
 import { Button } from './ui/button';
 import { SharedMoviePlayer } from './SharedMoviePlayer';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
@@ -56,7 +57,7 @@ const ParticipantPlaceholder = ({ connected, peerPresence }) => {
     : PRESENCE_COPY[peerPresence] || PRESENCE_COPY.waiting;
 
   return (
-  <section className="flex h-full w-full items-center justify-center bg-[#090d0f]" aria-live="polite">
+  <section className="flex h-full w-full items-center justify-center bg-canvas" aria-live="polite">
     <div className="flex max-w-sm flex-col items-center px-6 text-center">
       <div className="mb-5 grid size-24 place-items-center rounded-[2rem] border border-white/[0.08] bg-white/[0.035] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
         <User className="size-11 text-zinc-600" strokeWidth={1.5} />
@@ -96,6 +97,7 @@ export const VideoPlayer = ({ isIdle }) => {
     movieVolume,
     setMovieVolume,
     peerPresence,
+    externalWatchSession,
   } = useWebRTC();
 
   const mainVideoRef = useRef(null);
@@ -256,6 +258,7 @@ export const VideoPlayer = ({ isIdle }) => {
         video.play()
           .then(() => setDirectPlaybackBlocked(false))
           .catch(error => {
+            if (isExpectedPlaybackInterruption(error)) return;
             if (error.name === 'NotAllowedError') setDirectPlaybackBlocked(true);
             else setDirectPlaybackError(error.message || 'This device could not play the direct movie link.');
           });
@@ -297,7 +300,10 @@ export const VideoPlayer = ({ isIdle }) => {
   }, [mainStream, movieVolume, remoteShareSource?.kind, screenVolume, selectedView]);
 
   useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    const handleFullscreenChange = () => {
+      const fullscreenRoot = document.getElementById('root') || document.documentElement;
+      setIsFullscreen(document.fullscreenElement === fullscreenRoot);
+    };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [setIsFullscreen]);
@@ -413,7 +419,11 @@ export const VideoPlayer = ({ isIdle }) => {
       if (command.action === 'play') {
         video.play()
           .then(() => setDirectPlaybackBlocked(false))
-          .catch(error => setDirectPlaybackError(error.message || 'Playback was blocked on this device.'));
+          .catch(error => {
+            if (!isExpectedPlaybackInterruption(error)) {
+              setDirectPlaybackError(error.message || 'Playback was blocked on this device.');
+            }
+          });
       }
       if (command.action === 'pause') video.pause();
       if (command.action === 'seek' && Number.isFinite(command.currentTime)) {
@@ -458,7 +468,7 @@ export const VideoPlayer = ({ isIdle }) => {
     <TooltipProvider delayDuration={250}>
       <main
         ref={containerRef}
-        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-[#090d0f]'} ${(isFullscreen || isPresentationMode) && isChatOpen ? 'call-stage--chat-docked' : ''}`}
+        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-canvas'} ${isChatOpen && (isFullscreen || isPresentationMode) ? 'call-stage--chat-docked' : ''}`}
       >
         <audio ref={remoteAudioRef} autoPlay aria-label="Participant audio" />
         {pictureInPictureError ? (
@@ -651,6 +661,7 @@ export const VideoPlayer = ({ isIdle }) => {
             source={activeMovie.source}
             hidden={controlsHidden}
             onCommand={handleMovieCommand}
+            onAddSubtitle={() => document.getElementById('movie-subtitle-input')?.click()}
             volume={movieVolume}
             onVolumeChange={setMovieVolume}
           />
@@ -668,7 +679,11 @@ export const VideoPlayer = ({ isIdle }) => {
                 onClick={() => {
                   mainVideoRef.current?.play()
                     .then(() => setDirectPlaybackBlocked(false))
-                    .catch(error => setDirectPlaybackError(error.message || 'Playback is unavailable on this device.'));
+                    .catch(error => {
+                      if (!isExpectedPlaybackInterruption(error)) {
+                        setDirectPlaybackError(error.message || 'Playback is unavailable on this device.');
+                      }
+                    });
                 }}
               >
                 Play here
@@ -677,13 +692,15 @@ export const VideoPlayer = ({ isIdle }) => {
           </div>
         ) : null}
 
-        {isScreenView && !isPresentationMode && remoteStream && !remoteCameraOff ? (
+        {(isScreenView || externalWatchSession) && !isPresentationMode && remoteStream && !remoteCameraOff ? (
           <motion.div
             drag
             dragConstraints={containerRef}
-            dragElastic={0.1}
+            dragElastic={0}
             dragMomentum={false}
-            className={`group/pip absolute left-4 top-24 z-30 aspect-video w-48 overflow-hidden rounded-xl border border-white/10 bg-[#111719] shadow-2xl transition-opacity sm:left-7 sm:w-64 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+            className={`group/pip absolute left-4 top-24 z-40 aspect-video w-48 cursor-grab touch-none overflow-hidden rounded-xl border border-white/10 bg-[#111719] shadow-2xl transition-opacity active:cursor-grabbing sm:left-7 sm:w-64 ${controlsHidden && !externalWatchSession ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+            role="group"
+            aria-label="Movable participant camera preview"
           >
             <video
               ref={remoteCameraVideoRef}
@@ -692,36 +709,45 @@ export const VideoPlayer = ({ isIdle }) => {
               muted
               className={`h-full w-full object-cover ${remoteMirrored ? 'scale-x-[-1]' : ''}`}
             />
-            <button
-              type="button"
-              onClick={() => setSelectedView('remote-camera')}
-              className="absolute inset-0 z-10 cursor-pointer rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-300"
-              aria-label="Show participant camera in the main view"
-            >
-              <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-7 text-left text-xs font-medium text-white">
-                Participant · click to focus
-              </span>
-            </button>
-            {canUsePictureInPicture ? (
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-7 text-left text-xs font-medium text-white">
+              Participant · drag to move
+            </span>
+            <div className="absolute right-2 top-2 z-20 flex gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover/pip:opacity-100 sm:group-focus-within/pip:opacity-100" onPointerDown={event => event.stopPropagation()}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant={pictureInPictureView === 'remote-camera' ? 'active' : 'secondary'}
+                    variant="secondary"
                     size="icon"
-                    className="absolute right-2 top-2 z-20 size-9 opacity-0 group-hover/pip:opacity-100 group-focus-within/pip:opacity-100"
-                    onClick={() => togglePictureInPicture(remoteCameraVideoRef.current, 'remote-camera')}
-                    aria-label={pictureInPictureView === 'remote-camera' ? 'Return participant camera to the browser' : 'Float participant camera on the desktop'}
+                    className="size-9"
+                    onClick={() => setSelectedView('remote-camera')}
+                    aria-label="Show participant camera in the main view"
                   >
-                    <PictureInPicture2 className="size-4" />
+                    <Focus className="size-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{pictureInPictureView === 'remote-camera' ? 'Close floating camera' : 'Float participant on desktop'}</TooltipContent>
+                <TooltipContent>Focus participant camera</TooltipContent>
               </Tooltip>
-            ) : null}
+              {canUsePictureInPicture ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={pictureInPictureView === 'remote-camera' ? 'active' : 'secondary'}
+                      size="icon"
+                      className="size-9"
+                      onClick={() => togglePictureInPicture(remoteCameraVideoRef.current, 'remote-camera')}
+                      aria-label={pictureInPictureView === 'remote-camera' ? 'Return participant camera to the browser' : 'Float participant camera on the desktop'}
+                    >
+                      <PictureInPicture2 className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{pictureInPictureView === 'remote-camera' ? 'Close floating camera' : 'Float participant on desktop'}</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
           </motion.div>
         ) : null}
 
-        {!isPresentationMode && !hideLocal && localStream && !isCameraOff ? (
+        {!externalWatchSession && !isPresentationMode && !hideLocal && localStream && !isCameraOff ? (
           <motion.div
             drag
             dragConstraints={containerRef}

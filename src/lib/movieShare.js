@@ -9,6 +9,12 @@ const UNSUPPORTED_PAGE_HOSTS = [
   'vimeo.com',
 ];
 
+export const isExpectedPlaybackInterruption = error => {
+  if (error?.name === 'AbortError') return true;
+  const message = String(error?.message || error || '');
+  return /play\(\) request was interrupted|interrupted by a call to pause|interrupted by a new load request/i.test(message);
+};
+
 export const getMovieDisplayName = (fileName = '') => {
   const normalized = fileName.trim() || 'Untitled movie';
   if (normalized.length <= MAX_MOVIE_NAME_LENGTH) return normalized;

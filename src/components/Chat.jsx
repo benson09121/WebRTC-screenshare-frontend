@@ -8,13 +8,66 @@ import {
   X,
 } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
+import { getChatReactionSummary } from '../lib/chatProtocol';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+import { EmojiPicker } from './EmojiPicker';
 
 const timeFormatter = new Intl.DateTimeFormat([], {
   hour: 'numeric',
   minute: '2-digit',
 });
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂'];
+
+const MessageReactions = ({ connected, message, onToggle }) => {
+  const reactions = getChatReactionSummary(message);
+  const isLocal = message.from === 'local';
+
+  return (
+    <div
+      className={`mt-1 flex min-h-7 flex-wrap items-center gap-1 ${isLocal ? 'justify-end' : 'justify-start'}`}
+      aria-label="Message reactions"
+    >
+      {reactions.map(reaction => (
+        <button
+          key={reaction.emoji}
+          type="button"
+          onClick={() => onToggle(message.id, reaction.emoji)}
+          disabled={!connected}
+          className={`inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50 ${reaction.reactedByLocal ? 'border-teal-300/45 bg-teal-300/15 text-teal-100' : 'border-white/10 bg-white/[0.05] text-zinc-300 hover:bg-white/[0.09]'}`}
+          aria-label={`${reaction.reactedByLocal ? 'Remove' : 'Add'} ${reaction.emoji} reaction. ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
+          aria-pressed={reaction.reactedByLocal}
+        >
+          <span aria-hidden="true">{reaction.emoji}</span>
+          <span>{reaction.count}</span>
+        </button>
+      ))}
+      <div className="flex items-center rounded-lg border border-white/[0.07] bg-[#111719]/95 p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        {QUICK_REACTIONS.map(emoji => (
+          <Button
+            key={emoji}
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-lg text-sm"
+            onClick={() => onToggle(message.id, emoji)}
+            disabled={!connected}
+            aria-label={`React with ${emoji}`}
+          >
+            <span aria-hidden="true">{emoji}</span>
+          </Button>
+        ))}
+        <EmojiPicker
+          compact
+          disabled={!connected}
+          label="More reactions"
+          align={isLocal ? 'end' : 'start'}
+          onSelect={emoji => onToggle(message.id, emoji)}
+        />
+      </div>
+    </div>
+  );
+};
 
 export const Chat = ({ isIdle }) => {
   const {
@@ -28,6 +81,8 @@ export const Chat = ({ isIdle }) => {
     setIsChatOpen,
     setNotificationSoundEnabled,
     unreadCount,
+    toggleMessageReaction,
+    externalWatchSession,
   } = useWebRTC();
 
   const [text, setText] = useState('');
@@ -98,7 +153,11 @@ export const Chat = ({ isIdle }) => {
   useEffect(() => {
     if (!isChatOpen) return;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setIsChatOpen(false);
+      if (
+        event.key === 'Escape'
+        && !event.defaultPrevented
+        && !event.target?.closest?.('[data-chat-emoji-picker="true"]')
+      ) setIsChatOpen(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -119,6 +178,20 @@ export const Chat = ({ isIdle }) => {
     }
   };
 
+  const handleComposerEmoji = (emoji) => {
+    const composer = composerRef.current;
+    const selectionStart = composer?.selectionStart ?? text.length;
+    const selectionEnd = composer?.selectionEnd ?? text.length;
+    const nextText = `${text.slice(0, selectionStart)}${emoji}${text.slice(selectionEnd)}`
+      .slice(0, 2000);
+    const nextCaret = Math.min(selectionStart + emoji.length, nextText.length);
+    setText(nextText);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
   const handleMessageScroll = (event) => {
     const messageList = event.currentTarget;
     const nearBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 72;
@@ -127,11 +200,18 @@ export const Chat = ({ isIdle }) => {
   };
 
   const usesFocusedStage = isFullscreen || isPresentationMode;
+  const usesExternalPlayer = Boolean(externalWatchSession);
   const panelPlacement = usesFocusedStage
     ? 'inset-x-3 bottom-3 h-[min(58dvh,34rem)] md:inset-y-3 md:left-auto md:right-3 md:h-auto md:w-[min(22rem,32vw)]'
     : 'inset-x-3 bottom-20 h-[min(66dvh,32rem)] sm:left-auto sm:right-5 sm:w-[22rem]';
+  const launcherPlacement = usesExternalPlayer
+    ? 'right-3 top-1/2 -translate-y-1/2 sm:right-5'
+    : 'bottom-20 right-3 sm:bottom-5 sm:right-5';
+  const notificationPlacement = usesExternalPlayer
+    ? 'right-3 top-[calc(50%+3.25rem)] sm:right-5'
+    : 'bottom-[8.5rem] right-3 sm:bottom-[4.75rem] sm:right-5';
 
-  const launcherHidden = isChatOpen || (isIdle && unreadCount === 0);
+  const launcherHidden = isChatOpen || (isIdle && unreadCount === 0 && !isFullscreen);
 
   return (
     <>
@@ -140,7 +220,7 @@ export const Chat = ({ isIdle }) => {
         data-idle-ignore="true"
         variant="secondary"
         onClick={() => setIsChatOpen(true)}
-        className={`fixed bottom-20 right-3 z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none sm:bottom-5 sm:right-5 ${launcherHidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
+        className={`fixed z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherPlacement} ${launcherHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
         aria-label={unreadCount > 0 ? `Open chat, ${unreadCount} unread messages` : 'Open chat'}
         aria-hidden={launcherHidden}
         tabIndex={launcherHidden ? -1 : undefined}
@@ -157,7 +237,7 @@ export const Chat = ({ isIdle }) => {
       {showNotification && !isChatOpen ? (
         <div
           data-idle-ignore="true"
-          className="fixed bottom-[8.5rem] right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:bottom-[4.75rem] sm:right-5"
+          className={`fixed z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl ${notificationPlacement}`}
           role="status"
           aria-live="polite"
         >
@@ -250,7 +330,7 @@ export const Chat = ({ isIdle }) => {
                 return (
                   <li
                     key={message.id}
-                    className={`flex ${isLocal ? 'justify-end' : 'justify-start'}`}
+                    className={`group flex ${isLocal ? 'justify-end' : 'justify-start'}`}
                   >
                     <div className={`max-w-[86%] ${isLocal ? 'text-right' : 'text-left'}`}>
                       <div
@@ -258,6 +338,11 @@ export const Chat = ({ isIdle }) => {
                       >
                         {message.text}
                       </div>
+                      <MessageReactions
+                        connected={connected}
+                        message={message}
+                        onToggle={toggleMessageReaction}
+                      />
                       {message.sentAt ? (
                         <time
                           dateTime={new Date(message.sentAt).toISOString()}
@@ -290,6 +375,11 @@ export const Chat = ({ isIdle }) => {
         <form onSubmit={handleSend} className="border-t border-white/[0.08] bg-[#0d1214] p-3">
           <label htmlFor="chat-message" className="sr-only">Message</label>
           <div className="flex items-end gap-2">
+            <EmojiPicker
+              disabled={!connected}
+              label="Add emoji to message"
+              onSelect={handleComposerEmoji}
+            />
             <Textarea
               ref={composerRef}
               id="chat-message"

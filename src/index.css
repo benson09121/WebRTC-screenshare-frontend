@@ -3,14 +3,33 @@
 @theme {
   --color-primary: #6ee7d2;
   --color-primary-dark: #3fc6b2;
+  --color-primary-foreground: #07100f;
   --color-bg: #090d0f;
   --color-surface: #111719;
   --color-surface-light: #20282b;
+  --color-canvas: var(--background);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-border: var(--border);
+  --color-focus: var(--focus);
+  --color-danger: var(--destructive);
 }
 
 :root {
   color-scheme: dark;
   --radius: 0.75rem;
+  --background: #090d0f;
+  --panel: #111719;
+  --panel-raised: #182023;
+  --foreground: #f4f4f5;
+  --muted-foreground: #a1a1aa;
+  --subtle-foreground: #71717a;
+  --border: rgb(255 255 255 / 0.1);
+  --focus: #6ee7d2;
+  --destructive: #ef4444;
 }
 
 html, body, #root {
@@ -32,8 +51,8 @@ body {
   font-family: 'Geist', 'Avenir Next', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--color-bg);
-  color: white;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 button,
@@ -52,6 +71,40 @@ textarea {
     width: calc(100% - min(23rem, 34vw));
     margin-right: min(23rem, 34vw);
   }
+
+  .external-watch--chat-docked {
+    right: min(23rem, 34vw);
+  }
+}
+
+@keyframes sheet-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes sheet-left-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes sheet-left-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+@keyframes sheet-bottom-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes sheet-bottom-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -78,7 +131,7 @@ code {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-surface-light);
+  background: var(--panel-raised);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {

@@ -19,8 +19,8 @@ This document outlines the UI behaviors and conditions implemented.
 - **Behavior:** The `mainStream` intelligently prioritizes the `localScreenStream`, meaning the user who is sharing their screen will actually see their own shared screen in the main view.
 
 ## 5. Draggable In-Page Camera Previews
-- **Condition:** Active for the local camera preview and for the participant camera shown over a selected screen share.
-- **Behavior:** Uses `framer-motion` dragging constrained to the call stage. These previews remain inside PairBeam and are distinct from desktop Picture-in-Picture.
+- **Condition:** Active for the local camera preview and for the participant camera shown over a selected screen share or external watch provider.
+- **Behavior:** Uses `framer-motion` dragging constrained to the call stage, keeps the participant preview above shared/external media, and disables drag momentum. Dragging only repositions the preview; it never changes the selected main view. Focus and desktop Picture-in-Picture are separate explicit buttons.
 
 ## 6. Fullscreen Auto-hide (Global Idle State)
 - **Condition:** Triggers 3 seconds after no mouse movement while in Fullscreen mode.
@@ -29,6 +29,7 @@ This document outlines the UI behaviors and conditions implemented.
 ## 7. Fullscreen Chat Accessibility
 - **Condition:** The participant opens Chat while a screen share is fullscreen.
 - **Behavior:** Chat opens as a narrow docked rail on wide screens, reserving layout space so it does not cover the shared content. On narrow screens it becomes a bounded bottom sheet. Closing Chat returns the shared view to its full available size.
+- **Ordinary room:** Outside fullscreen and presentation mode, chat overlays the stage and does not resize or shift the video. During external-provider playback, its launcher sits at the right-center instead of covering the provider's bottom-right controls.
 - **Keyboard behavior:** The launcher and close control are keyboard reachable; `Enter` sends, `Shift+Enter` inserts a newline, `Escape` closes the panel, and new messages are announced through a polite live region.
 
 ## 8. Chat Notifications
@@ -53,14 +54,14 @@ This document outlines the UI behaviors and conditions implemented.
 - **Final share ends:** Switch to the participant camera view.
 - **Camera unavailable or off:** Render the participant user-icon placeholder instead of retaining the final shared frame.
 - **Remote cleanup:** Hide the remote screen immediately when `screen-toggle` reports that sharing stopped, while retaining its negotiated receiver track so a later share can resume without renegotiation or a stuck loading state.
-- **Playback volume:** Keep participant microphone playback separate from shared-content playback. Place the local-only participant voice slider in the microphone arrow menu, shared-screen audio in the screen-share arrow menu, and shared-movie audio beside the movie timeline. Values remain in memory and reset when the room ends or the page reloads.
+- **Playback volume:** Keep participant microphone playback separate from shared-content playback. Place the local-only participant voice slider in the microphone arrow menu, shared-screen audio in the screen-share arrow menu, and shared-movie audio beside the movie timeline. The host and viewer can choose different movie levels; volume is never sent as a shared playback command. On the host, media-element volume changes local monitoring but does not change the level of the captured audio track. Values remain in memory and reset when the room ends or the page reloads.
 - **Scoped settings:** Use compact, keyboard-accessible popovers anchored to down-arrow buttons beside microphone, camera, and screen share. The camera menu owns camera selection; microphone owns input selection and participant voice; screen share owns quality, content type, outgoing desktop-audio source, incoming screen volume, and collapsible live metrics. Do not render a global settings panel over the stage.
 - **Shared movie player:** Render the same branded player controls for the host and viewer. Either participant can request play, pause, seek, subtitle visibility, or an available audio-track change; the browser holding the source remains the timeline authority and publishes the resulting state.
-- **Subtitles:** External SRT files remain on the host device. Parse cues locally, send only the currently active cue over the data channel, and render it as inert text over both movie views.
+- **Subtitles:** External SRT files remain on the host device. The host may load or replace an SRT before or during playback. Parse cues locally, send only the currently active cue over the data channel, and render it as inert text over both movie views. When the source browser exposes embedded text tracks, either participant may choose one during playback; the host applies the shared selection and publishes the resulting cue. A UI player must not claim embedded MKV support when the browser did not demux those tracks.
 
 ## 11. Component System
 - **Foundation:** Tailwind CSS v4 with local shadcn-style components backed by Radix UI primitives.
-- **Current primitives:** Button, Textarea, Tabs, and Tooltip.
+- **Current primitives:** Button, Input, Textarea, Tabs, Tooltip, and Popover, all backed by semantic canvas, panel, foreground, muted, border, primary, destructive, and focus tokens.
 - **Accessibility:** Icon buttons have accessible names, tabs support keyboard navigation, controls use visible focus rings, and dynamic waiting/error states use live regions.
 
 ## 12. Connection Health
@@ -130,3 +131,26 @@ This document outlines the UI behaviors and conditions implemented.
 - **End behavior:** Reaching the end, stopping, replacing the movie, or leaving stops captured tracks, revokes the object URL, clears file metadata, and returns affected viewers through the existing share fallback rules.
 - **Quality:** Auto uses movie-specific 24/30fps profiles. Manual screen presets remain available, but the source frame rate remains browser and file dependent.
 - **Compatibility:** Feature-detect `captureStream()`/`mozCaptureStream()`. When unavailable or the codec cannot be decoded, show an actionable transient error suggesting current Chrome/Firefox or browser-tab sharing with audio.
+
+## 20. Frontend-only TMDB catalog
+
+- **Architecture:** The browser calls TMDB directly. PairBeam exposes no catalog route, stores no catalog response, and adds no catalog database.
+- **Authentication:** Read `VITE_TMDB_READ_ACCESS_TOKEN` at build time and send it as a TMDB application Bearer token. Treat it as a public, restricted, replaceable client credential because Vite embeds it in the shipped JavaScript; never use a TMDB user/session token.
+- **Search:** Debounce input by 300 ms, cancel superseded requests, exclude person results, and distinguish initial, loading, empty, invalid-token, rate-limit, and upstream/offline states.
+- **Metadata:** Normalize movie and TV fields into one local shape. Label `vote_average` as a TMDB rating, preserve movie/series identity, and browse TV seasons and episodes without claiming playback availability.
+- **Series selection:** On desktop, keep seasons in a left navigation rail and episodes in a scrollable detail list. On mobile, open seasons in a focus-managed bottom Sheet. Every episode shows its exact S/E code and available still, title, runtime, air date, overview, and TMDB rating, with an explicit Watch episode action.
+- **Active-series drawer:** During TV playback, keep a compact arrow on the left edge. It opens a modal left Sheet with the current episode, horizontally scrollable seasons, and a keyboard-accessible episode list. Focus stays inside while open, Escape closes it, focus returns to the arrow, and reduced-motion preferences reduce the transition to a near-instant state change.
+- **Playback boundary:** Selecting a result prepares metadata only. It must not create a provider frame, fetch a movie stream, or tell the peer that the title is playable. A future approved provider requires the proposal, consent, rights, and bidirectional-control gates in the roadmap.
+- **Bundle behavior:** Lazy-load the catalog surface when the user opens Browse catalog so discovery UI does not enlarge the initial call-control path.
+
+## 21. External watch-provider gate
+
+- **Required contract:** A production provider adapter must declare one exact HTTPS origin, production approval, readiness/state/time/duration capabilities, inbound play/pause/seek capabilities, and the `buildEmbedUrl`, `load`, `play`, `pause`, `seek`, `subscribe`, and `destroy` lifecycle methods.
+- **Current result:** Vidking is not remotely controllable from an ordinary cross-origin PairBeam page, so the experimental Chrome extension supplies the local player bridge after explicit installation and viewer consent. Vidsrc.sbs remains disabled because its changing nested origins have not passed the same control and security model.
+- **Missing extension:** Disable invitation acceptance and show a prominent direct `.crx` download in incoming, outgoing, and active-session states. Present Developer-mode, drag-to-install, confirmation, and reload steps, plus a detailed fallback guide. Never distribute or expose the `.pem` signing key.
+- **Fullscreen:** Use PairBeam-level fullscreen for the external stage so PairBeam chat, episode navigation, the draggable participant camera, and call controls remain available. The cross-origin provider iframe is not granted native fullscreen permission because browser top-layer isolation would hide those sibling controls. A persistent bottom-center down-arrow reveals the mic/camera/share/movie dashboard and changes to an up-arrow while expanded. The top-right fullscreen/stop actions and left episode trigger are independent: after inactivity they fade to a quiet, still-clickable state and return to full opacity on hover or focus. Radix portals must mount inside the active fullscreen element so dialogs remain visible, focus-managed, and keyboard accessible.
+- **Catalog behavior:** Catalog metadata never claims playback availability. Starting the Vidking prototype requires the extension-specific proposal and peer consent before loading the provider.
+- **Episode identity:** A TV proposal is invalid without positive season and episode numbers. The proposal also carries a bounded episode title for display, and both participants derive the same `/embed/tv/{tmdbId}/{season}/{episode}` URL locally.
+- **Episode changes:** Either participant may select another episode. A non-authority sends a bounded request; the proposer authority increments and broadcasts the media revision. Playback commands and state must match that revision so events from the replaced episode cannot affect the new player.
+- **No reload synchronization:** Do not emulate play/pause/seek by recreating an iframe with a timestamp. Reloading destroys buffer and subtitle state, can fail browser autoplay checks, and cannot provide a stable shared clock.
+- **Future activation:** Only an authorized provider that passes the adapter validation may proceed to viewer consent, sandbox/CSP isolation, exact-origin message validation, and the two-peer authoritative playback clock.

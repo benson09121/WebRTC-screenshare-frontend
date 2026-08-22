@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Chrome extension signing key. Keep this private and outside deployments.
+extension.pem
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

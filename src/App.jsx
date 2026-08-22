@@ -10,11 +10,21 @@ import { Button } from './components/ui/button';
 import { ConnectionHealth } from './components/ConnectionHealth';
 import { shouldIgnoreIdleActivity } from './lib/idleActivity';
 
+const ExternalWatchParty = React.lazy(() => import('./components/ExternalWatchParty'));
+
 const MainApp = () => {
-  const { roomId, isPresentationMode } = useWebRTC();
+  const {
+    roomId,
+    isPresentationMode,
+    externalWatchInvite,
+    outgoingExternalWatchProposal,
+    externalWatchSession,
+    externalWatchProposalStatus,
+  } = useWebRTC();
   const [isIdle, setIsIdle] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isConnectionDetailsOpen, setIsConnectionDetailsOpen] = useState(false);
+  const [isFullscreenDashboardOpen, setIsFullscreenDashboardOpen] = useState(false);
   
   useEffect(() => {
     let timeout;
@@ -49,7 +59,7 @@ const MainApp = () => {
 
   if (!roomId) {
     return (
-      <div className="absolute inset-0 flex h-full w-full flex-col overflow-hidden bg-[#090d0f] font-sans">
+      <div className="absolute inset-0 flex h-full w-full flex-col overflow-hidden bg-canvas font-sans">
         <LandingPage />
       </div>
     );
@@ -63,7 +73,7 @@ const MainApp = () => {
         aria-hidden={isPresentationMode}
         inert={isPresentationMode}
       >
-        <div className="pointer-events-auto flex w-fit items-center gap-2 rounded-xl border border-white/10 bg-[#111719]/90 p-1.5 pl-3 shadow-[0_12px_35px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+        <div className="pointer-events-auto flex w-fit items-center gap-2 rounded-xl border border-border bg-panel/90 p-1.5 pl-3 shadow-[0_12px_35px_rgba(0,0,0,0.3)] backdrop-blur-xl">
           <Users className="size-4 text-teal-300" />
           <span className="font-mono text-xs font-semibold tracking-[0.14em] text-zinc-200">
             {roomId}
@@ -89,7 +99,19 @@ const MainApp = () => {
       </header>
 
       <VideoPlayer isIdle={actualIsIdle} />
-      <ControlPanel isIdle={actualIsIdle} />
+      {(externalWatchInvite
+        || outgoingExternalWatchProposal
+        || externalWatchSession
+        || ['declined', 'cancelled'].includes(externalWatchProposalStatus)) ? (
+          <React.Suspense fallback={null}>
+            <ExternalWatchParty isIdle={actualIsIdle} />
+          </React.Suspense>
+        ) : null}
+      <ControlPanel
+        isIdle={actualIsIdle}
+        fullscreenDashboardOpen={isFullscreenDashboardOpen}
+        setFullscreenDashboardOpen={setIsFullscreenDashboardOpen}
+      />
       <Chat isIdle={actualIsIdle} />
     </div>
   );

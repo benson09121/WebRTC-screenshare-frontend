@@ -4,7 +4,28 @@ import { EMPTY_CONNECTION_STATS, summarizeWebRTCStats } from '../lib/webrtcStats
 import { createEmptyAudioTrack, createEmptyVideoTrack } from '../lib/mediaTracks';
 import { DEFAULT_PLAYBACK_VOLUMES, normalizePlaybackVolume } from '../lib/playbackVolume';
 import { sanitizeSharedDirectMediaUrl } from '../lib/movieShare';
+import {
+  createExternalWatchProposal,
+  isNewerExternalWatchState,
+  normalizeExternalWatchCommand,
+  normalizeExternalWatchEpisodeRequest,
+  normalizeExternalWatchMedia,
+  normalizeExternalWatchMediaState,
+  normalizeExternalWatchProposal,
+  normalizeExternalWatchResponse,
+  normalizeExternalWatchState,
+} from '../lib/externalWatchProtocol';
+import {
+  appendUniqueChatMessage,
+  applyChatReaction,
+  createChatMessagePayload,
+  isSupportedChatEmoji,
+  normalizeChatMessagePayload,
+  normalizeChatReactionPayload,
+} from '../lib/chatProtocol';
 import { WebRTCContext } from './useWebRTC';
+
+const EXTERNAL_MEDIA_SWITCH_GUARD_MS = 750;
 
 const getIceServers = () => {
   const configuredStunUrls = import.meta.env.VITE_STUN_URLS
@@ -33,6 +54,13 @@ const getIceServers = () => {
 
   return { iceServers: servers };
 };
+
+const isSameExternalSeries = (session, media) => Boolean(
+  session?.media?.mediaType === 'tv'
+  && media?.mediaType === 'tv'
+  && session.media.providerId === media.providerId
+  && session.media.tmdbId === media.tmdbId
+);
 
 export const WebRTCProvider = ({ children }) => {
   // Use Vercel environment variable or fallback to local network dynamic host
@@ -70,12 +98,16 @@ export const WebRTCProvider = ({ children }) => {
     clientIdRef.current = globalThis.crypto?.randomUUID?.()
       || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+  const outgoingExternalWatchProposalRef = useRef(null);
+  const externalWatchSessionRef = useRef(null);
+  const externalWatchRevisionRef = useRef(0);
 
   const [remoteStream, setRemoteStream] = useState(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState(null);
   const [localStream, setLocalStreamState] = useState(null);
   const [localScreenStream, setLocalScreenStreamState] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
+  const chatMessagesRef = useRef([]);
   const [connected, setConnected] = useState(false);
   const [isScreenSharing, setIsScreenSharingState] = useState(false);
   const [roomId, setRoomId] = useState(null);
@@ -83,6 +115,11 @@ export const WebRTCProvider = ({ children }) => {
   const [peerPresence, setPeerPresence] = useState('waiting');
   const [connectionStats, setConnectionStats] = useState(EMPTY_CONNECTION_STATS);
   const [movieControlRequest, setMovieControlRequest] = useState(null);
+  const [externalWatchInvite, setExternalWatchInvite] = useState(null);
+  const [outgoingExternalWatchProposal, setOutgoingExternalWatchProposalState] = useState(null);
+  const [externalWatchSession, setExternalWatchSessionState] = useState(null);
+  const [externalWatchCommand, setExternalWatchCommand] = useState(null);
+  const [externalWatchProposalStatus, setExternalWatchProposalStatus] = useState('idle');
   const [participantVolume, setParticipantVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.participant);
   const [screenVolume, setScreenVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.screen);
   const [movieVolume, setMovieVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.movie);
@@ -96,6 +133,17 @@ export const WebRTCProvider = ({ children }) => {
   const [remoteShareSource, setRemoteShareSource] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
+
+  const setOutgoingExternalWatchProposal = useCallback(value => {
+    outgoingExternalWatchProposalRef.current = value;
+    setOutgoingExternalWatchProposalState(value);
+  }, []);
+
+  const setExternalWatchSession = useCallback(value => {
+    const nextValue = typeof value === 'function' ? value(externalWatchSessionRef.current) : value;
+    externalWatchSessionRef.current = nextValue;
+    setExternalWatchSessionState(nextValue);
+  }, []);
 
   const setParticipantVolume = useCallback(value => {
     setParticipantVolumeState(normalizePlaybackVolume(value));
@@ -190,13 +238,6 @@ export const WebRTCProvider = ({ children }) => {
     notificationAudioContextRef.current = null;
   }, []);
 
-  const createChatMessage = (text, from) => ({
-    id: `${clientIdRef.current}-${Date.now()}-${messageSequenceRef.current++}`,
-    text,
-    from,
-    sentAt: Date.now(),
-  });
-
   const pendingCandidates = useRef([]);
 
   const bindTransceivers = useCallback((pc) => {
@@ -215,7 +256,7 @@ export const WebRTCProvider = ({ children }) => {
     screenTransceiverRef.current = videoTransceivers[1] || null;
   }, []);
 
-  const resetRemotePeer = () => {
+  const resetRemotePeer = useCallback(() => {
     if (disconnectRecoveryTimerRef.current) {
       window.clearTimeout(disconnectRecoveryTimerRef.current);
       disconnectRecoveryTimerRef.current = null;
@@ -250,7 +291,13 @@ export const WebRTCProvider = ({ children }) => {
     setRemoteShareSource(null);
     setRemoteCameraOff(true);
     setConnected(false);
-  };
+    setExternalWatchInvite(null);
+    setOutgoingExternalWatchProposal(null);
+    setExternalWatchSession(null);
+    setExternalWatchCommand(null);
+    setExternalWatchProposalStatus('idle');
+    externalWatchRevisionRef.current = 0;
+  }, [setExternalWatchSession, setOutgoingExternalWatchProposal]);
 
   const handleDataMessage = event => {
     try {
@@ -346,15 +393,152 @@ export const WebRTCProvider = ({ children }) => {
           currentTime: Number.isFinite(data.currentTime) ? Math.max(0, data.currentTime) : null,
           trackIndex: Number.isInteger(data.trackIndex) ? data.trackIndex : null,
           enabled: typeof data.enabled === 'boolean' ? data.enabled : null,
+          resumeAfterSeek: data.action === 'seek' && data.resumeAfterSeek === true,
         });
         return;
       }
-      if (data.type === 'chat' && typeof data.text === 'string' && data.text.length <= 2000) {
-        setChatMessages(previous => [...previous, createChatMessage(data.text, 'remote')]);
+      if (data.type === 'external-watch-proposal') {
+        const proposal = normalizeExternalWatchProposal(data);
+        if (!proposal || externalWatchSessionRef.current) return;
+        const pendingProposal = outgoingExternalWatchProposalRef.current;
+        if (pendingProposal) {
+          if (pendingProposal.proposalId.localeCompare(proposal.proposalId) <= 0) {
+            dataChannelRef.current?.send(JSON.stringify({
+              type: 'external-watch-response',
+              proposalId: proposal.proposalId,
+              accepted: false,
+            }));
+            return;
+          }
+          dataChannelRef.current?.send(JSON.stringify({
+            type: 'external-watch-stop',
+            proposalId: pendingProposal.proposalId,
+          }));
+          setOutgoingExternalWatchProposal(null);
+          setExternalWatchProposalStatus('idle');
+        }
+        setExternalWatchInvite(proposal);
+        return;
+      }
+      if (data.type === 'external-watch-response') {
+        const response = normalizeExternalWatchResponse(data);
+        const pendingProposal = outgoingExternalWatchProposalRef.current;
+        if (!response || response.proposalId !== pendingProposal?.proposalId) return;
+        if (response.accepted) {
+          externalWatchRevisionRef.current = 0;
+          setExternalWatchSession({
+            proposalId: pendingProposal.proposalId,
+            media: pendingProposal.media,
+            authority: 'local',
+            playback: null,
+            mediaRevision: 0,
+          });
+          setExternalWatchProposalStatus('accepted');
+        } else {
+          setExternalWatchProposalStatus('declined');
+        }
+        setOutgoingExternalWatchProposal(null);
+        return;
+      }
+      if (data.type === 'external-watch-episode-request') {
+        const request = normalizeExternalWatchEpisodeRequest(data);
+        const session = externalWatchSessionRef.current;
+        if (
+          !request
+          || session?.authority !== 'local'
+          || request.proposalId !== session.proposalId
+          || !isSameExternalSeries(session, request.media)
+        ) return;
+        const state = normalizeExternalWatchMediaState({
+          type: 'external-watch-media-state',
+          proposalId: session.proposalId,
+          revision: (session.mediaRevision || 0) + 1,
+          media: request.media,
+        });
+        if (!state) return;
+        externalWatchRevisionRef.current = 0;
+        setExternalWatchCommand(null);
+        setExternalWatchSession({ ...session, media: state.media, mediaRevision: state.revision, mediaChangedAt: Date.now(), playback: null });
+        dataChannelRef.current?.send(JSON.stringify(state));
+        return;
+      }
+      if (data.type === 'external-watch-media-state') {
+        const state = normalizeExternalWatchMediaState(data);
+        const session = externalWatchSessionRef.current;
+        if (
+          !state
+          || session?.authority !== 'remote'
+          || state.proposalId !== session.proposalId
+          || state.revision <= (session.mediaRevision || 0)
+          || !isSameExternalSeries(session, state.media)
+        ) return;
+        externalWatchRevisionRef.current = 0;
+        setExternalWatchCommand(null);
+        setExternalWatchSession({ ...session, media: state.media, mediaRevision: state.revision, mediaChangedAt: Date.now(), playback: null });
+        return;
+      }
+      if (data.type === 'external-watch-command') {
+        const command = normalizeExternalWatchCommand(data);
+        const session = externalWatchSessionRef.current;
+        if (
+          !command
+          || session?.authority !== 'local'
+          || command.proposalId !== session.proposalId
+          || command.mediaRevision !== (session.mediaRevision || 0)
+        ) return;
+        setExternalWatchCommand(command);
+        return;
+      }
+      if (data.type === 'external-watch-state') {
+        const state = normalizeExternalWatchState(data);
+        const session = externalWatchSessionRef.current;
+        if (
+          !state
+          || session?.authority !== 'remote'
+          || state.proposalId !== session.proposalId
+          || state.mediaRevision !== (session.mediaRevision || 0)
+          || !isNewerExternalWatchState(session.playback, state)
+        ) return;
+        setExternalWatchSession({ ...session, playback: state });
+        return;
+      }
+      if (data.type === 'external-watch-stop') {
+        const session = externalWatchSessionRef.current;
+        if (session && data.proposalId === session.proposalId) {
+          setExternalWatchSession(null);
+          setExternalWatchCommand(null);
+          setExternalWatchProposalStatus('idle');
+        }
+        const pendingProposal = outgoingExternalWatchProposalRef.current;
+        if (pendingProposal && data.proposalId === pendingProposal.proposalId) {
+          setOutgoingExternalWatchProposal(null);
+          setExternalWatchProposalStatus('cancelled');
+        }
+        setExternalWatchInvite(current => (
+          current?.proposalId === data.proposalId ? null : current
+        ));
+        return;
+      }
+      if (data.type === 'chat') {
+        const message = normalizeChatMessagePayload(data, 'remote');
+        if (!message) return;
+        const nextMessages = appendUniqueChatMessage(chatMessagesRef.current, message);
+        if (nextMessages === chatMessagesRef.current) return;
+        chatMessagesRef.current = nextMessages;
+        setChatMessages(nextMessages);
         if (!isChatOpenRef.current) {
           setUnreadCount(previous => previous + 1);
           playNotificationSound();
         }
+        return;
+      }
+      if (data.type === 'chat-reaction') {
+        const reaction = normalizeChatReactionPayload(data);
+        if (!reaction) return;
+        const nextMessages = applyChatReaction(chatMessagesRef.current, reaction, 'remote');
+        if (nextMessages === chatMessagesRef.current) return;
+        chatMessagesRef.current = nextMessages;
+        setChatMessages(nextMessages);
       }
       return;
     } catch {
@@ -430,6 +614,7 @@ export const WebRTCProvider = ({ children }) => {
         setRoomId(null);
       } else if (msg.type === 'peer-left') {
         resetRemotePeer();
+        chatMessagesRef.current = [];
         setChatMessages([]);
         setUnreadCount(0);
         setIsChatOpen(false);
@@ -580,7 +765,7 @@ export const WebRTCProvider = ({ children }) => {
     return () => {
       if (ws.onmessage === handleSignalingMessage) ws.onmessage = null;
     };
-  }, [status, ws, bindTransceivers, setIsChatOpen]);
+  }, [status, ws, bindTransceivers, resetRemotePeer, setIsChatOpen]);
 
   useEffect(() => {
     if (!roomId || status !== 'connected' || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -822,14 +1007,43 @@ export const WebRTCProvider = ({ children }) => {
   restartIceRef.current = restartIce;
 
   const sendMessage = (text) => {
-    if (text.length <= 2000 && dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
-      dataChannelRef.current.send(JSON.stringify({ type: 'chat', text }));
-      setChatMessages(prev => [...prev, createChatMessage(text, 'local')]);
-      return true;
-    } else {
+    const channel = dataChannelRef.current;
+    const payload = createChatMessagePayload({
+      clientId: clientIdRef.current,
+      sequence: messageSequenceRef.current++,
+      text,
+    });
+    if (!payload || !channel || channel.readyState !== 'open') {
       console.warn("Data channel is not open");
       return false;
     }
+
+    const message = normalizeChatMessagePayload(payload, 'local');
+    channel.send(JSON.stringify(payload));
+    const nextMessages = appendUniqueChatMessage(chatMessagesRef.current, message);
+    chatMessagesRef.current = nextMessages;
+    setChatMessages(nextMessages);
+    return true;
+  };
+
+  const toggleMessageReaction = (messageId, emoji) => {
+    const channel = dataChannelRef.current;
+    const message = chatMessagesRef.current.find(item => item.id === messageId);
+    if (!message || !isSupportedChatEmoji(emoji) || !channel || channel.readyState !== 'open') {
+      return false;
+    }
+
+    const reaction = {
+      type: 'chat-reaction',
+      messageId,
+      emoji,
+      active: !message.reactions?.[emoji]?.local,
+    };
+    channel.send(JSON.stringify(reaction));
+    const nextMessages = applyChatReaction(chatMessagesRef.current, reaction, 'local');
+    chatMessagesRef.current = nextMessages;
+    setChatMessages(nextMessages);
+    return true;
   };
 
   const sendControlMessage = (data) => {
@@ -847,6 +1061,7 @@ export const WebRTCProvider = ({ children }) => {
       currentTime: Number.isFinite(command.currentTime) ? Math.max(0, command.currentTime) : null,
       trackIndex: Number.isInteger(command.trackIndex) ? command.trackIndex : null,
       enabled: typeof command.enabled === 'boolean' ? command.enabled : null,
+      resumeAfterSeek: command.action === 'seek' && command.resumeAfterSeek === true,
     };
     if (owner === 'local') {
       setMovieControlRequest({
@@ -865,6 +1080,152 @@ export const WebRTCProvider = ({ children }) => {
     return false;
   }, []);
 
+  const proposeExternalWatch = useCallback(media => {
+    const channel = dataChannelRef.current;
+    if (channel?.readyState !== 'open' || externalWatchSessionRef.current) return false;
+    const proposal = createExternalWatchProposal({
+      clientId: clientIdRef.current,
+      sequence: messageSequenceRef.current++,
+      media,
+    });
+    if (!proposal) return false;
+    channel.send(JSON.stringify(proposal));
+    setOutgoingExternalWatchProposal(proposal);
+    setExternalWatchProposalStatus('pending');
+    return true;
+  }, [setOutgoingExternalWatchProposal]);
+
+  const respondExternalWatchProposal = useCallback((accepted) => {
+    const proposal = externalWatchInvite;
+    const channel = dataChannelRef.current;
+    if (!proposal || channel?.readyState !== 'open') return false;
+    const response = normalizeExternalWatchResponse({
+      type: 'external-watch-response',
+      proposalId: proposal.proposalId,
+      accepted: Boolean(accepted),
+    });
+    if (!response) return false;
+    channel.send(JSON.stringify(response));
+    if (response.accepted) {
+      externalWatchRevisionRef.current = 0;
+      setExternalWatchSession({
+        proposalId: proposal.proposalId,
+        media: proposal.media,
+        authority: 'remote',
+        playback: null,
+        mediaRevision: 0,
+      });
+      setExternalWatchProposalStatus('accepted');
+    } else {
+      setExternalWatchProposalStatus('declined');
+    }
+    setExternalWatchInvite(null);
+    return true;
+  }, [externalWatchInvite, setExternalWatchSession]);
+
+  const selectExternalWatchEpisode = useCallback(media => {
+    const session = externalWatchSessionRef.current;
+    const channel = dataChannelRef.current;
+    const normalizedMedia = normalizeExternalWatchMedia(media);
+    if (
+      !session
+      || channel?.readyState !== 'open'
+      || !normalizedMedia
+      || !isSameExternalSeries(session, normalizedMedia)
+    ) return false;
+
+    if (session.authority === 'remote') {
+      const request = normalizeExternalWatchEpisodeRequest({
+        type: 'external-watch-episode-request',
+        proposalId: session.proposalId,
+        requestId: `${clientIdRef.current}-${messageSequenceRef.current++}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96),
+        media: normalizedMedia,
+      });
+      if (!request) return false;
+      channel.send(JSON.stringify(request));
+      return true;
+    }
+
+    const state = normalizeExternalWatchMediaState({
+      type: 'external-watch-media-state',
+      proposalId: session.proposalId,
+      revision: (session.mediaRevision || 0) + 1,
+      media: normalizedMedia,
+    });
+    if (!state) return false;
+    externalWatchRevisionRef.current = 0;
+    setExternalWatchCommand(null);
+    setExternalWatchSession({ ...session, media: state.media, mediaRevision: state.revision, mediaChangedAt: Date.now(), playback: null });
+    channel.send(JSON.stringify(state));
+    return true;
+  }, [setExternalWatchSession]);
+
+  const requestExternalWatchControl = useCallback(command => {
+    const session = externalWatchSessionRef.current;
+    if (
+      !session
+      || !command
+      || (session.mediaChangedAt && Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
+    ) return false;
+    const normalized = normalizeExternalWatchCommand({
+      type: 'external-watch-command',
+      proposalId: session.proposalId,
+      commandId: `${clientIdRef.current}-${messageSequenceRef.current++}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96),
+      mediaRevision: session.mediaRevision || 0,
+      action: command.action,
+      position: command.position,
+      resumeAfterSeek: command.resumeAfterSeek,
+    });
+    if (!normalized) return false;
+
+    if (session.authority === 'local') {
+      setExternalWatchCommand(normalized);
+      return true;
+    }
+    if (dataChannelRef.current?.readyState !== 'open') return false;
+    dataChannelRef.current.send(JSON.stringify(normalized));
+    return true;
+  }, []);
+
+  const publishExternalWatchState = useCallback(playback => {
+    const session = externalWatchSessionRef.current;
+    const channel = dataChannelRef.current;
+    if (
+      !session
+      || session.authority !== 'local'
+      || channel?.readyState !== 'open'
+      || (session.mediaChangedAt && Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
+    ) return false;
+    const state = normalizeExternalWatchState({
+      type: 'external-watch-state',
+      proposalId: session.proposalId,
+      revision: ++externalWatchRevisionRef.current,
+      mediaRevision: session.mediaRevision || 0,
+      paused: playback?.paused,
+      position: playback?.position,
+      duration: playback?.duration,
+    });
+    if (!state) return false;
+    setExternalWatchSession({ ...session, playback: state });
+    channel.send(JSON.stringify(state));
+    return true;
+  }, [setExternalWatchSession]);
+
+  const stopExternalWatch = useCallback(() => {
+    const session = externalWatchSessionRef.current;
+    const pendingProposal = outgoingExternalWatchProposalRef.current;
+    const proposalId = session?.proposalId || pendingProposal?.proposalId;
+    if (proposalId && dataChannelRef.current?.readyState === 'open') {
+      dataChannelRef.current.send(JSON.stringify({ type: 'external-watch-stop', proposalId }));
+    }
+    setExternalWatchInvite(null);
+    setOutgoingExternalWatchProposal(null);
+    setExternalWatchSession(null);
+    setExternalWatchCommand(null);
+    setExternalWatchProposalStatus('idle');
+    externalWatchRevisionRef.current = 0;
+  }, [setExternalWatchSession, setOutgoingExternalWatchProposal]);
+
   const endCall = () => {
     resetRemotePeer();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -882,6 +1243,7 @@ export const WebRTCProvider = ({ children }) => {
     setLocalScreenStreamState(null);
     setIsScreenSharing(false);
     setLocalShareSource(null);
+    chatMessagesRef.current = [];
     setChatMessages([]);
     setUnreadCount(0);
     setIsChatOpen(false);
@@ -1036,9 +1398,21 @@ export const WebRTCProvider = ({ children }) => {
       startCall,
       endCall,
       sendMessage,
+      toggleMessageReaction,
       sendControlMessage,
       requestMovieControl,
       movieControlRequest,
+      externalWatchInvite,
+      outgoingExternalWatchProposal,
+      externalWatchSession,
+      externalWatchCommand,
+      externalWatchProposalStatus,
+      proposeExternalWatch,
+      respondExternalWatchProposal,
+      requestExternalWatchControl,
+      publishExternalWatchState,
+      selectExternalWatchEpisode,
+      stopExternalWatch,
       setCameraStream,
       setOutgoingAudioTrack,
       setSharedContentAudioTrack,

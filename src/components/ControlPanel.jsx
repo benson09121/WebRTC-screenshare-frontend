@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from '../context/useWebRTC';
-import { Captions, ChevronDown, Film, Link2, Mic, MicOff, Play, Video, VideoOff, MonitorPlay, MonitorUp, PhoneOff, Upload, UserRound, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, ChevronDown, ChevronUp, Film, Link2, Mic, MicOff, Play, Video, VideoOff, MonitorPlay, MonitorUp, PhoneOff, Upload, UserRound, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -14,6 +14,7 @@ import {
   getDirectMediaDisplayName,
   getMovieDisplayName,
   getMovieVideoGeometry,
+  isExpectedPlaybackInterruption,
   getNativeAudioTrackOptions,
   getNativeSubtitleTrackOptions,
   normalizeDirectMediaUrl,
@@ -34,6 +35,8 @@ import {
   summarizeScreenSenderStats,
 } from '../lib/screenShareQuality';
 
+const WatchCatalog = React.lazy(() => import('./WatchCatalog').then(module => ({ default: module.WatchCatalog })));
+
 const QUALITY_PRESETS = {
   'auto': { label: 'Auto (recommended)', auto: true },
   'lossless': { label: 'Native resolution (up to 60fps)', lossless: true, frameRate: 60, bitrate: 12000000 },
@@ -49,6 +52,8 @@ const SCREEN_AUDIO_COPY = {
   unavailable: 'No screen-audio track was provided. Video is still being shared.',
   direct: 'Each participant is playing the direct link locally; movie audio is not relayed through WebRTC.',
 };
+
+const SEEK_SETTLE_DELAY_MS = 900;
 
 const isMonitorSource = device => /(^|[\s._-])monitor([\s._-]|$)|monitor of/i.test(device.label);
 const isVirtualAudioSource = device => /virtual.?cable|loopback|null.?sink/i.test(device.label);
@@ -117,7 +122,11 @@ const VolumeControl = ({ id, icon: Icon, label, description, value, onChange }) 
   );
 };
 
-export const ControlPanel = ({ isIdle }) => {
+export const ControlPanel = ({
+  isIdle,
+  fullscreenDashboardOpen,
+  setFullscreenDashboardOpen,
+}) => {
   const {
     endCall,
     setCameraStream,
@@ -133,6 +142,7 @@ export const ControlPanel = ({ isIdle }) => {
     isMuted,
     setIsMuted,
     sendControlMessage,
+    isFullscreen,
     isPresentationMode,
     localShareSource,
     setLocalShareSource,
@@ -140,8 +150,10 @@ export const ControlPanel = ({ isIdle }) => {
     setParticipantVolume,
     screenVolume,
     setScreenVolume,
+    movieVolume,
     movieControlRequest,
     connected,
+    proposeExternalWatch,
   } = useWebRTC();
   
   const [quality, setQuality] = useState('auto');
@@ -160,6 +172,7 @@ export const ControlPanel = ({ isIdle }) => {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [, setMovieProgress] = useState({ currentTime: 0, duration: 0, isPlaying: false });
   const [showMovieSourcePicker, setShowMovieSourcePicker] = useState(false);
+  const [showWatchCatalog, setShowWatchCatalog] = useState(false);
   const [directMediaUrl, setDirectMediaUrl] = useState('');
   const [isLoadingDirectMedia, setIsLoadingDirectMedia] = useState(false);
   const [selectedSubtitle, setSelectedSubtitle] = useState(null);
@@ -195,6 +208,8 @@ export const ControlPanel = ({ isIdle }) => {
   const lastBroadcastSubtitleRef = useRef('');
   const sendMovieStateRef = useRef(null);
   const processedMovieControlRequestRef = useRef(null);
+  const localShareSourceRef = useRef(localShareSource);
+  const movieSeekResumeTimerRef = useRef(null);
   getSenderRef.current = getSender;
   qualityRef.current = quality;
   contentTypeRef.current = contentType;
@@ -204,6 +219,7 @@ export const ControlPanel = ({ isIdle }) => {
   selectedMovieAudioTrackRef.current = selectedMovieAudioTrack;
   nativeSubtitleTracksRef.current = nativeSubtitleTracks;
   selectedNativeSubtitleTrackRef.current = selectedNativeSubtitleTrack;
+  localShareSourceRef.current = localShareSource;
 
   const dismissMediaError = () => {
     window.clearTimeout(mediaErrorTimerRef.current);
@@ -225,6 +241,8 @@ export const ControlPanel = ({ isIdle }) => {
   };
 
   const clearMovieSource = () => {
+    window.clearTimeout(movieSeekResumeTimerRef.current);
+    movieSeekResumeTimerRef.current = null;
     const player = moviePlayerRef.current;
     if (player) {
       player.pause();
@@ -328,7 +346,14 @@ export const ControlPanel = ({ isIdle }) => {
     movieObjectUrlRef.current = null;
     window.clearTimeout(mediaErrorTimerRef.current);
     mediaErrorTimerRef.current = null;
+    window.clearTimeout(movieSeekResumeTimerRef.current);
+    movieSeekResumeTimerRef.current = null;
   }, []);
+
+  useEffect(() => {
+    const player = moviePlayerRef.current;
+    if (player) player.volume = movieVolume / 100;
+  }, [movieVolume]);
 
   const getDevices = async () => {
     try {
@@ -689,6 +714,14 @@ export const ControlPanel = ({ isIdle }) => {
     if (stoppingShareRef.current) return;
     stoppingShareRef.current = true;
 
+    const wasMovieShare = localShareSourceRef.current?.kind === 'movie';
+    if (wasMovieShare) {
+      // Stop source playback before awaiting sender replacement. Otherwise the
+      // hidden source can keep playing while WebRTC cleanup is in progress.
+      moviePlayerRef.current?.pause();
+      window.clearTimeout(movieSeekResumeTimerRef.current);
+      movieSeekResumeTimerRef.current = null;
+    }
     const displayStream = activeDisplayStreamRef.current || localScreenStream;
     const screenVideoTrack = displayStream?.getVideoTracks()[0];
     if (screenVideoTrack) screenVideoTrack.onended = null;
@@ -715,7 +748,7 @@ export const ControlPanel = ({ isIdle }) => {
       setIsScreenSharing(false);
       sendControlMessage({ type: 'screen-toggle', isScreenSharing: false });
       setLocalShareSource(null);
-      if (!preserveMovieSource && localShareSource?.kind === 'movie') clearMovieSource();
+      if (!preserveMovieSource && wasMovieShare) clearMovieSource();
       stoppingShareRef.current = false;
     }
   };
@@ -1098,7 +1131,8 @@ export const ControlPanel = ({ isIdle }) => {
         : QUALITY_PRESETS[qualityRef.current];
       await applyScreenQuality(moviePreset, 'movie');
     } catch (error) {
-      console.error('Failed to share movie', error);
+      const playbackWasSuperseded = isExpectedPlaybackInterruption(error);
+      if (!playbackWasSuperseded) console.error('Failed to share movie', error);
       capturedStream?.getTracks().forEach(track => track.stop());
       activeDisplayStreamRef.current = null;
       screenAudioTrackRef.current = null;
@@ -1107,6 +1141,7 @@ export const ControlPanel = ({ isIdle }) => {
       player.pause();
       setIsScreenSharing(false);
       setLocalShareSource(null);
+      if (playbackWasSuperseded) return;
       const isMatroskaFile = selectedMovie.sourceType === 'file'
         && selectedMovie.container === 'mkv';
       const isDecodeFailure = error.message?.includes('could not decode a video frame');
@@ -1193,10 +1228,27 @@ export const ControlPanel = ({ isIdle }) => {
 
     const applyRequest = async () => {
       try {
+        if (['play', 'pause', 'seek'].includes(movieControlRequest.action)) {
+          window.clearTimeout(movieSeekResumeTimerRef.current);
+          movieSeekResumeTimerRef.current = null;
+        }
         if (movieControlRequest.action === 'play') await player.play();
         if (movieControlRequest.action === 'pause') player.pause();
         if (movieControlRequest.action === 'seek' && movieControlRequest.currentTime != null) {
+          player.pause();
           player.currentTime = Math.min(movieControlRequest.currentTime, player.duration || movieControlRequest.currentTime);
+          if (movieControlRequest.resumeAfterSeek) {
+            movieSeekResumeTimerRef.current = window.setTimeout(() => {
+              movieSeekResumeTimerRef.current = null;
+              if (localShareSourceRef.current?.kind !== 'movie') return;
+              player.play().catch(error => {
+                if (isExpectedPlaybackInterruption(error)) return;
+                showMediaError(error.name === 'NotAllowedError'
+                  ? 'Press play once on the source device so synchronized seeking can resume playback'
+                  : error.message || 'Playback could not resume after seeking');
+              });
+            }, SEEK_SETTLE_DELAY_MS);
+          }
         }
         if (movieControlRequest.action === 'audio-track' && movieControlRequest.trackIndex != null) {
           if (selectNativeAudioTrack(player, movieControlRequest.trackIndex)) {
@@ -1223,6 +1275,7 @@ export const ControlPanel = ({ isIdle }) => {
         }
         sendMovieStateRef.current?.();
       } catch (error) {
+        if (isExpectedPlaybackInterruption(error)) return;
         showMediaError(error.name === 'NotAllowedError'
           ? 'The browser blocked remote playback. Press play on the host once, then try again'
           : error.message || 'The shared movie control failed');
@@ -1265,12 +1318,32 @@ export const ControlPanel = ({ isIdle }) => {
     if (open) setShowMovieSourcePicker(false);
   };
 
+  useEffect(() => {
+    setFullscreenDashboardOpen(false);
+    setActiveSettingsMenu(null);
+    setShowMovieSourcePicker(false);
+  }, [isFullscreen, setFullscreenDashboardOpen]);
+
+  const dashboardHidden = isPresentationMode || (isFullscreen ? !fullscreenDashboardOpen : isIdle);
+
+  const toggleFullscreenDashboard = () => {
+    setFullscreenDashboardOpen(current => {
+      if (current) {
+        setActiveSettingsMenu(null);
+        setShowMovieSourcePicker(false);
+      }
+      return !current;
+    });
+  };
+
   return (
     <TooltipProvider delayDuration={250}>
+    <>
     <div
-      className={`absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-end gap-4 transition-all duration-300 motion-reduce:transition-none hover:!translate-y-0 hover:!opacity-100 sm:bottom-8 ${isIdle || isPresentationMode ? 'pointer-events-none translate-y-6 opacity-0' : 'translate-y-0 opacity-100'}`}
-      aria-hidden={isPresentationMode}
-      inert={isPresentationMode}
+      id="call-dashboard"
+      className={`absolute left-1/2 z-20 flex -translate-x-1/2 items-end gap-4 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${isFullscreen ? 'bottom-16' : 'bottom-4 hover:!translate-y-0 hover:!opacity-100 sm:bottom-8'} ${dashboardHidden ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`}
+      aria-hidden={dashboardHidden}
+      inert={dashboardHidden}
     >
       <input
         ref={movieInputRef}
@@ -1281,6 +1354,7 @@ export const ControlPanel = ({ isIdle }) => {
         aria-label="Choose a movie from your computer"
       />
       <input
+        id="movie-subtitle-input"
         ref={subtitleInputRef}
         type="file"
         accept=".srt,application/x-subrip,text/plain"
@@ -1318,6 +1392,11 @@ export const ControlPanel = ({ isIdle }) => {
             Choose a video file
           </Button>
 
+          <Button variant="secondary" className="w-full" onClick={() => { setShowWatchCatalog(true); setShowMovieSourcePicker(false); }}>
+            <Film className="size-4" />
+            Browse catalog
+          </Button>
+
           <div className="flex items-center gap-3" aria-hidden="true">
             <span className="h-px flex-1 bg-white/[0.08]" />
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">or direct link</span>
@@ -1349,6 +1428,31 @@ export const ControlPanel = ({ isIdle }) => {
           </p>
           <p className="sr-only" aria-live="polite">{isLoadingDirectMedia ? 'Loading direct video URL.' : ''}</p>
         </aside>
+      ) : null}
+
+      {showWatchCatalog ? (
+        <React.Suspense fallback={(
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-sm" role="status" aria-live="polite">
+            <div className="rounded-2xl border border-border bg-panel px-5 py-4 text-sm text-muted-foreground shadow-2xl">
+              Opening catalog…
+            </div>
+          </div>
+        )}>
+          <WatchCatalog
+            open
+            onClose={() => setShowWatchCatalog(false)}
+            onProposal={item => proposeExternalWatch({
+              providerId: 'vidking-extension',
+              mediaType: item.mediaType,
+              tmdbId: item.id,
+              title: item.title,
+              posterPath: item.posterPath,
+              season: item.season,
+              episode: item.episode,
+              episodeTitle: item.episodeTitle,
+            })}
+          />
+        </React.Suspense>
       ) : null}
 
       {selectedMovie && localShareSource?.kind !== 'movie' && !activeSettingsMenu && !showMovieSourcePicker ? (
@@ -1663,6 +1767,28 @@ export const ControlPanel = ({ isIdle }) => {
         </Button>
       </div>
     </div>
+    {isFullscreen && !isPresentationMode ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            data-idle-ignore="true"
+            variant="secondary"
+            size="icon"
+            className="absolute bottom-3 left-1/2 z-[70] size-10 -translate-x-1/2 rounded-full border-white/15 bg-[#111719]/92 shadow-[0_12px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+            onClick={toggleFullscreenDashboard}
+            aria-label={fullscreenDashboardOpen ? 'Hide call dashboard' : 'Show call dashboard'}
+            aria-controls="call-dashboard"
+            aria-expanded={fullscreenDashboardOpen}
+          >
+            {fullscreenDashboardOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {fullscreenDashboardOpen ? 'Hide call controls' : 'Show call controls'}
+        </TooltipContent>
+      </Tooltip>
+    ) : null}
+    </>
     </TooltipProvider>
   );
 };
