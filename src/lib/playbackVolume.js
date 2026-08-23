@@ -4,12 +4,13 @@ export const DEFAULT_PLAYBACK_VOLUMES = Object.freeze({
   movie: 100,
 });
 
-export const normalizePlaybackVolume = value => {
+export const normalizePlaybackVolume = (value) => {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return 100;
   return Math.min(100, Math.max(0, Math.round(numericValue)));
 };
 
-export const getRemoteContentVolume = (sourceKind, volumes) => (
-  normalizePlaybackVolume(sourceKind === 'movie' ? volumes.movie : volumes.screen)
-);
+export const getRemoteContentVolume = (sourceKind, volumes) =>
+  normalizePlaybackVolume(
+    sourceKind === 'movie' ? volumes.movie : volumes.screen,
+  );

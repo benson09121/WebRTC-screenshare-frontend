@@ -85,12 +85,12 @@ Catalog sources: [TMDB multi-search](https://developer.themoviedb.org/reference/
 
 ### Audited remaining backlog
 
-| Priority | Meaning | Remaining work |
-| --- | --- | --- |
-| P0 | Production/reliability gate | TURN credentials; negotiation generation IDs; schema validation; reconnect and end-to-end browser coverage; security headers/CORS/dependency automation; external-provider gates above |
-| P1 | Next product milestone | catalog/series flow; unified redesign; chat reactions/emoji; watch invitations; replace-share confirmation; keyboard shortcuts; pre-call device preview; accessibility coverage |
-| P2 | Stability and compatibility | regional/short-lived TURN; per-stream diagnostics; quality-warning hysteresis; diagnostics export; Linux audio matrix; Firefox/Safari PiP; MKV prototype and benchmarks; GIF messaging |
-| P3 | Exploratory/later | Document PiP; same-file fingerprint mode; chunked RTCDataChannel/MSE research; raised hand; annotations/laser pointer; mobile Web Share |
+| Priority | Meaning                     | Remaining work                                                                                                                                                                         |
+| -------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0       | Production/reliability gate | TURN credentials; negotiation generation IDs; schema validation; reconnect and end-to-end browser coverage; security headers/CORS/dependency automation; external-provider gates above |
+| P1       | Next product milestone      | catalog/series flow; unified redesign; chat reactions/emoji; watch invitations; replace-share confirmation; keyboard shortcuts; pre-call device preview; accessibility coverage        |
+| P2       | Stability and compatibility | regional/short-lived TURN; per-stream diagnostics; quality-warning hysteresis; diagnostics export; Linux audio matrix; Firefox/Safari PiP; MKV prototype and benchmarks; GIF messaging |
+| P3       | Exploratory/later           | Document PiP; same-file fingerprint mode; chunked RTCDataChannel/MSE research; raised hand; annotations/laser pointer; mobile Web Share                                                |
 
 Duplicate roadmap entries for movie invitations, diagnostics export, and browser tests are consolidated under their highest-priority owner below.
 

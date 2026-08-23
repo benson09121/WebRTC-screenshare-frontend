@@ -12,7 +12,11 @@ export const getNextSelectedView = ({
     return hasRemoteScreen ? 'remote-screen' : 'remote-camera';
   }
   if (hasLocalScreen && !previousShares.local) return 'local-screen';
-  if (hasRemoteScreen && !previousShares.remote && selectedView === 'remote-camera') {
+  if (
+    hasRemoteScreen &&
+    !previousShares.remote &&
+    selectedView === 'remote-camera'
+  ) {
     return 'remote-screen';
   }
   return selectedView;

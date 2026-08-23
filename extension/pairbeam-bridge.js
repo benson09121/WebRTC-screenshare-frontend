@@ -3,8 +3,11 @@ const EXTENSION_CHANNEL = 'pairbeam-extension';
 let watchSessionActive = false;
 let contextInvalidated = false;
 
-const postToPage = payload => {
-  window.postMessage({ channel: EXTENSION_CHANNEL, ...payload }, window.location.origin);
+const postToPage = (payload) => {
+  window.postMessage(
+    { channel: EXTENSION_CHANNEL, ...payload },
+    window.location.origin,
+  );
 };
 
 const reportInvalidatedContext = () => {
@@ -24,7 +27,7 @@ const sendRuntimeMessage = (message, onResponse) => {
       reportInvalidatedContext();
       return;
     }
-    chrome.runtime.sendMessage(message, response => {
+    chrome.runtime.sendMessage(message, (response) => {
       try {
         if (chrome.runtime.lastError) {
           reportInvalidatedContext();
@@ -42,17 +45,25 @@ const sendRuntimeMessage = (message, onResponse) => {
 };
 
 const register = () => {
-  sendRuntimeMessage({
-    source: 'pairbeam-bridge',
-    type: 'register',
-    watchActive: watchSessionActive,
-  }, response => {
-    postToPage({ type: 'status', detected: true, playerReady: Boolean(response?.playerReady) });
-  });
+  sendRuntimeMessage(
+    {
+      source: 'pairbeam-bridge',
+      type: 'register',
+      watchActive: watchSessionActive,
+    },
+    (response) => {
+      postToPage({
+        type: 'status',
+        detected: true,
+        playerReady: Boolean(response?.playerReady),
+      });
+    },
+  );
 };
 
-window.addEventListener('message', event => {
-  if (event.source !== window || event.origin !== window.location.origin) return;
+window.addEventListener('message', (event) => {
+  if (event.source !== window || event.origin !== window.location.origin)
+    return;
   const message = event.data;
   if (!message || message.channel !== PAGE_CHANNEL) return;
 
@@ -69,26 +80,39 @@ window.addEventListener('message', event => {
     });
     return;
   }
-  if (message.type !== 'command' || !message.command || typeof message.command !== 'object') return;
-  sendRuntimeMessage({
-    source: 'pairbeam-bridge',
-    type: 'command',
-    command: message.command,
-  }, response => {
-    postToPage({
-      type: 'command-result',
-      commandId: message.command.commandId || null,
-      delivered: Boolean(response?.ok),
-    });
-  });
+  if (
+    message.type !== 'command' ||
+    !message.command ||
+    typeof message.command !== 'object'
+  )
+    return;
+  sendRuntimeMessage(
+    {
+      source: 'pairbeam-bridge',
+      type: 'command',
+      command: message.command,
+    },
+    (response) => {
+      postToPage({
+        type: 'command-result',
+        commandId: message.command.commandId || null,
+        delivered: Boolean(response?.ok),
+      });
+    },
+  );
 });
 
-chrome.runtime.onMessage.addListener(message => {
+chrome.runtime.onMessage.addListener((message) => {
   if (message?.target !== 'pairbeam-bridge') return;
   if (message.type === 'status') {
-    postToPage({ type: 'status', detected: true, playerReady: Boolean(message.playerReady) });
+    postToPage({
+      type: 'status',
+      detected: true,
+      playerReady: Boolean(message.playerReady),
+    });
   }
-  if (message.type === 'player-event') postToPage({ type: 'player-event', event: message.event });
+  if (message.type === 'player-event')
+    postToPage({ type: 'player-event', event: message.event });
   if (message.type === 'user-activity') postToPage({ type: 'user-activity' });
   if (message.type === 'popup-blocked') postToPage({ type: 'popup-blocked' });
 });

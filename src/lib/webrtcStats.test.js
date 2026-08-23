@@ -1,23 +1,32 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { summarizeWebRTCStats } from './webrtcStats.js';
 
-const makeReport = entries => new Map(entries.map(entry => [entry.id, entry]));
+const makeReport = (entries) =>
+  new Map(entries.map((entry) => [entry.id, entry]));
 
 test('summarizes interval rates, packet loss, relay path, and video dimensions', () => {
   const previous = new Map([
     ['out-video', { timestamp: 1000, bytesSent: 1000000 }],
-    ['in-video', {
-      timestamp: 1000,
-      bytesReceived: 500000,
-      packetsReceived: 100,
-      packetsLost: 0,
-      framesDropped: 2,
-    }],
+    [
+      'in-video',
+      {
+        timestamp: 1000,
+        bytesReceived: 500000,
+        packetsReceived: 100,
+        packetsLost: 0,
+        framesDropped: 2,
+      },
+    ],
   ]);
 
   const report = makeReport([
-    { id: 'transport', type: 'transport', timestamp: 3000, selectedCandidatePairId: 'pair' },
+    {
+      id: 'transport',
+      type: 'transport',
+      timestamp: 3000,
+      selectedCandidatePairId: 'pair',
+    },
     {
       id: 'pair',
       type: 'candidate-pair',
@@ -29,8 +38,20 @@ test('summarizes interval rates, packet loss, relay path, and video dimensions',
       currentRoundTripTime: 0.25,
       availableOutgoingBitrate: 6000000,
     },
-    { id: 'local', type: 'local-candidate', timestamp: 3000, candidateType: 'relay', protocol: 'udp' },
-    { id: 'remote', type: 'remote-candidate', timestamp: 3000, candidateType: 'srflx', protocol: 'udp' },
+    {
+      id: 'local',
+      type: 'local-candidate',
+      timestamp: 3000,
+      candidateType: 'relay',
+      protocol: 'udp',
+    },
+    {
+      id: 'remote',
+      type: 'remote-candidate',
+      timestamp: 3000,
+      candidateType: 'srflx',
+      protocol: 'udp',
+    },
     {
       id: 'out-video',
       type: 'outbound-rtp',

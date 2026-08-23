@@ -7,13 +7,14 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
-export const DialogContent = React.forwardRef(function DialogContent({
-  className,
-  children,
-  showClose = true,
-  ...props
-}, ref) {
-  const fullscreenContainer = typeof document === 'undefined' ? undefined : document.fullscreenElement || undefined;
+export const DialogContent = React.forwardRef(function DialogContent(
+  { className, children, showClose = true, ...props },
+  ref,
+) {
+  const fullscreenContainer =
+    typeof document === 'undefined'
+      ? undefined
+      : document.fullscreenElement || undefined;
 
   return (
     <DialogPrimitive.Portal container={fullscreenContainer}>
@@ -25,7 +26,10 @@ export const DialogContent = React.forwardRef(function DialogContent({
       >
         {children}
         {showClose ? (
-          <DialogPrimitive.Close className="absolute right-4 top-4 grid size-9 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus" aria-label="Close dialog">
+          <DialogPrimitive.Close
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-focus absolute top-4 right-4 grid size-9 place-items-center rounded-lg transition-colors outline-none hover:bg-white/[0.06] focus-visible:ring-2"
+            aria-label="Close dialog"
+          >
             <X className="size-4" aria-hidden="true" />
           </DialogPrimitive.Close>
         ) : null}
@@ -34,10 +38,28 @@ export const DialogContent = React.forwardRef(function DialogContent({
   );
 });
 
-export const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props }, ref) {
-  return <DialogPrimitive.Title ref={ref} className={cn('text-base font-semibold', className)} {...props} />;
+export const DialogTitle = React.forwardRef(function DialogTitle(
+  { className, ...props },
+  ref,
+) {
+  return (
+    <DialogPrimitive.Title
+      ref={ref}
+      className={cn('text-base font-semibold', className)}
+      {...props}
+    />
+  );
 });
 
-export const DialogDescription = React.forwardRef(function DialogDescription({ className, ...props }, ref) {
-  return <DialogPrimitive.Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />;
+export const DialogDescription = React.forwardRef(function DialogDescription(
+  { className, ...props },
+  ref,
+) {
+  return (
+    <DialogPrimitive.Description
+      ref={ref}
+      className={cn('text-muted-foreground text-sm', className)}
+      {...props}
+    />
+  );
 });

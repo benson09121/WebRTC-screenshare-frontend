@@ -33,7 +33,8 @@ export const AUDITED_WATCH_PROVIDERS = Object.freeze([
       reportsCurrentTime: true,
       reportsDuration: true,
     }),
-    blocker: 'The public player emits playback events but does not document inbound play, pause, or seek commands.',
+    blocker:
+      'The public player emits playback events but does not document inbound play, pause, or seek commands.',
   }),
   Object.freeze({
     id: 'vidsrc-sbs',
@@ -49,38 +50,51 @@ export const AUDITED_WATCH_PROVIDERS = Object.freeze([
       reportsCurrentTime: false,
       reportsDuration: false,
     }),
-    blocker: 'The public integration exposes embed/start-time URLs and nested player domains, not a stable bidirectional control contract.',
+    blocker:
+      'The public integration exposes embed/start-time URLs and nested player domains, not a stable bidirectional control contract.',
   }),
 ]);
 
-export const getMissingWatchCapabilities = capabilities => Object.entries(REQUIRED_WATCH_CAPABILITIES)
-  .filter(([name, required]) => required && capabilities?.[name] !== true)
-  .map(([name]) => name);
+export const getMissingWatchCapabilities = (capabilities) =>
+  Object.entries(REQUIRED_WATCH_CAPABILITIES)
+    .filter(([name, required]) => required && capabilities?.[name] !== true)
+    .map(([name]) => name);
 
-export const isProviderSynchronizationReady = provider => Boolean(
-  provider?.productionEnabled
-  && typeof provider.origin === 'string'
-  && provider.origin.startsWith('https://')
-  && getMissingWatchCapabilities(provider.capabilities).length === 0,
-);
+export const isProviderSynchronizationReady = (provider) =>
+  Boolean(
+    provider?.productionEnabled &&
+    typeof provider.origin === 'string' &&
+    provider.origin.startsWith('https://') &&
+    getMissingWatchCapabilities(provider.capabilities).length === 0,
+  );
 
-export const validateWatchProviderAdapter = adapter => {
-  if (!adapter || typeof adapter !== 'object') return { valid: false, reason: 'Adapter is missing.' };
+export const validateWatchProviderAdapter = (adapter) => {
+  if (!adapter || typeof adapter !== 'object')
+    return { valid: false, reason: 'Adapter is missing.' };
   if (!isProviderSynchronizationReady(adapter)) {
     return {
       valid: false,
-      reason: adapter.blocker || `Missing capabilities: ${getMissingWatchCapabilities(adapter.capabilities).join(', ')}`,
+      reason:
+        adapter.blocker ||
+        `Missing capabilities: ${getMissingWatchCapabilities(adapter.capabilities).join(', ')}`,
     };
   }
-  const missingMethods = REQUIRED_METHODS.filter(method => typeof adapter[method] !== 'function');
-  if (missingMethods.length) return { valid: false, reason: `Missing adapter methods: ${missingMethods.join(', ')}` };
+  const missingMethods = REQUIRED_METHODS.filter(
+    (method) => typeof adapter[method] !== 'function',
+  );
+  if (missingMethods.length)
+    return {
+      valid: false,
+      reason: `Missing adapter methods: ${missingMethods.join(', ')}`,
+    };
   return { valid: true, reason: null };
 };
 
-export const getWatchProviderAudit = () => AUDITED_WATCH_PROVIDERS.map(provider => ({
-  ...provider,
-  synchronizationReady: isProviderSynchronizationReady(provider),
-  missingCapabilities: getMissingWatchCapabilities(provider.capabilities),
-}));
+export const getWatchProviderAudit = () =>
+  AUDITED_WATCH_PROVIDERS.map((provider) => ({
+    ...provider,
+    synchronizationReady: isProviderSynchronizationReady(provider),
+    missingCapabilities: getMissingWatchCapabilities(provider.capabilities),
+  }));
 
 export { REQUIRED_METHODS };

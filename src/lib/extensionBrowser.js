@@ -1,21 +1,31 @@
 const MOBILE_BROWSER_PATTERN = /Android|Mobile|iPhone|iPad|iPod/i;
 
-export const detectExtensionBrowser = ({ userAgent = '', brands = [] } = {}) => {
+export const detectExtensionBrowser = ({
+  userAgent = '',
+  brands = [],
+} = {}) => {
   const normalizedUserAgent = String(userAgent);
   const normalizedBrands = Array.isArray(brands)
-    ? brands.map(brand => String(brand?.brand || brand)).join(' ')
+    ? brands.map((brand) => String(brand?.brand || brand)).join(' ')
     : '';
   const isMobile = MOBILE_BROWSER_PATTERN.test(normalizedUserAgent);
 
-  if (/Firefox\//i.test(normalizedUserAgent) || /Firefox/i.test(normalizedBrands)) {
+  if (
+    /Firefox\//i.test(normalizedUserAgent) ||
+    /Firefox/i.test(normalizedBrands)
+  ) {
     return { family: 'firefox', label: 'Firefox', supported: !isMobile };
   }
 
   if (
-    /Edg\//i.test(normalizedUserAgent)
-    || /Microsoft Edge/i.test(normalizedBrands)
+    /Edg\//i.test(normalizedUserAgent) ||
+    /Microsoft Edge/i.test(normalizedBrands)
   ) {
-    return { family: 'chromium', label: 'Microsoft Edge', supported: !isMobile };
+    return {
+      family: 'chromium',
+      label: 'Microsoft Edge',
+      supported: !isMobile,
+    };
   }
 
   if (/OPR\//i.test(normalizedUserAgent) || /Opera/i.test(normalizedBrands)) {
@@ -23,10 +33,14 @@ export const detectExtensionBrowser = ({ userAgent = '', brands = [] } = {}) => 
   }
 
   if (
-    /Chrom(?:e|ium)\//i.test(normalizedUserAgent)
-    || /Google Chrome|Chromium|Brave/i.test(normalizedBrands)
+    /Chrom(?:e|ium)\//i.test(normalizedUserAgent) ||
+    /Google Chrome|Chromium|Brave/i.test(normalizedBrands)
   ) {
-    return { family: 'chromium', label: 'Chrome/Chromium', supported: !isMobile };
+    return {
+      family: 'chromium',
+      label: 'Chrome/Chromium',
+      supported: !isMobile,
+    };
   }
 
   if (/Safari\//i.test(normalizedUserAgent)) {

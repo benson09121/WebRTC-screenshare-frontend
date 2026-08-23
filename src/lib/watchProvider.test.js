@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   getWatchProviderAudit,
@@ -10,10 +10,26 @@ import {
 
 test('blocks audited providers that cannot accept synchronized playback commands', () => {
   const audit = getWatchProviderAudit();
-  assert.deepEqual(audit.map(provider => provider.id), ['vidking', 'vidsrc-sbs']);
-  assert.equal(audit.every(provider => provider.synchronizationReady === false), true);
-  assert.equal(audit.find(provider => provider.id === 'vidking').missingCapabilities.includes('acceptsSeek'), true);
-  assert.equal(audit.find(provider => provider.id === 'vidsrc-sbs').missingCapabilities.includes('emitsPlaybackState'), true);
+  assert.deepEqual(
+    audit.map((provider) => provider.id),
+    ['vidking', 'vidsrc-sbs'],
+  );
+  assert.equal(
+    audit.every((provider) => provider.synchronizationReady === false),
+    true,
+  );
+  assert.equal(
+    audit
+      .find((provider) => provider.id === 'vidking')
+      .missingCapabilities.includes('acceptsSeek'),
+    true,
+  );
+  assert.equal(
+    audit
+      .find((provider) => provider.id === 'vidsrc-sbs')
+      .missingCapabilities.includes('emitsPlaybackState'),
+    true,
+  );
 });
 
 test('accepts only a production-enabled HTTPS adapter with the full bidirectional contract', () => {
@@ -23,10 +39,15 @@ test('accepts only a production-enabled HTTPS adapter with the full bidirectiona
     productionEnabled: true,
     capabilities: { ...REQUIRED_WATCH_CAPABILITIES },
   };
-  REQUIRED_METHODS.forEach(method => { adapter[method] = () => undefined; });
+  REQUIRED_METHODS.forEach((method) => {
+    adapter[method] = () => undefined;
+  });
 
   assert.equal(isProviderSynchronizationReady(adapter), true);
-  assert.deepEqual(validateWatchProviderAdapter(adapter), { valid: true, reason: null });
+  assert.deepEqual(validateWatchProviderAdapter(adapter), {
+    valid: true,
+    reason: null,
+  });
 });
 
 test('rejects a nominally capable adapter when a lifecycle method is absent', () => {
@@ -35,6 +56,8 @@ test('rejects a nominally capable adapter when a lifecycle method is absent', ()
     productionEnabled: true,
     capabilities: { ...REQUIRED_WATCH_CAPABILITIES },
   };
-  REQUIRED_METHODS.slice(1).forEach(method => { adapter[method] = () => undefined; });
+  REQUIRED_METHODS.slice(1).forEach((method) => {
+    adapter[method] = () => undefined;
+  });
   assert.match(validateWatchProviderAdapter(adapter).reason, /buildEmbedUrl/);
 });

@@ -52,16 +52,16 @@ Room membership exists only in the signaling server's process memory. PairBeam h
 
 ## Technology
 
-| Area | Stack |
-| --- | --- |
-| Interface | React 19, Vite, Tailwind CSS v4 |
-| Components | Local shadcn-style primitives using Radix UI |
-| Calls and sharing | WebRTC media transceivers |
-| Chat and call controls | WebRTC data channel |
-| Catalog metadata | Direct browser requests to TMDB |
+| Area                       | Stack                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| Interface                  | React 19, Vite, Tailwind CSS v4                                               |
+| Components                 | Local shadcn-style primitives using Radix UI                                  |
+| Calls and sharing          | WebRTC media transceivers                                                     |
+| Chat and call controls     | WebRTC data channel                                                           |
+| Catalog metadata           | Direct browser requests to TMDB                                               |
 | Experimental provider sync | Cross-browser MV3 companion extension for desktop Chrome/Chromium and Firefox |
-| Signaling | Node.js, Express, and WebSocket |
-| Persistence | None |
+| Signaling                  | Node.js, Express, and WebSocket                                               |
+| Persistence                | None                                                                          |
 
 ## Run locally
 

@@ -7,33 +7,39 @@ export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 
-export const SheetContent = React.forwardRef(function SheetContent({
-  className,
-  children,
-  side = 'right',
-  ...props
-}, ref) {
-  const fullscreenContainer = typeof document === 'undefined' ? undefined : document.fullscreenElement || undefined;
+export const SheetContent = React.forwardRef(function SheetContent(
+  { className, children, side = 'right', ...props },
+  ref,
+) {
+  const fullscreenContainer =
+    typeof document === 'undefined'
+      ? undefined
+      : document.fullscreenElement || undefined;
   const sideClasses = {
     left: 'inset-y-0 left-0 h-full w-[min(23rem,92vw)] border-r data-[state=open]:animate-[sheet-left-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-left-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
-    right: 'inset-y-0 right-0 h-full w-[min(24rem,90vw)] border-l data-[state=open]:animate-[sheet-right-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-right-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
-    bottom: 'inset-x-0 bottom-0 max-h-[82dvh] rounded-t-3xl border-t data-[state=open]:animate-[sheet-bottom-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-bottom-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
+    right:
+      'inset-y-0 right-0 h-full w-[min(24rem,90vw)] border-l data-[state=open]:animate-[sheet-right-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-right-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
+    bottom:
+      'inset-x-0 bottom-0 max-h-[82dvh] rounded-t-3xl border-t data-[state=open]:animate-[sheet-bottom-in_260ms_cubic-bezier(0.16,1,0.3,1)_both] data-[state=closed]:animate-[sheet-bottom-out_180ms_cubic-bezier(0.4,0,1,1)_both]',
   };
 
   return (
     <DialogPrimitive.Portal container={fullscreenContainer}>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-[110] bg-black/65 backdrop-blur-sm data-[state=open]:animate-[sheet-overlay-in_240ms_ease-out_both] data-[state=closed]:animate-[sheet-overlay-out_180ms_ease-out_both]" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-[110] bg-black/65 backdrop-blur-sm data-[state=closed]:animate-[sheet-overlay-out_180ms_ease-out_both] data-[state=open]:animate-[sheet-overlay-in_240ms_ease-out_both]" />
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          'fixed z-[120] overflow-y-auto border-border bg-panel p-5 text-foreground shadow-2xl outline-none will-change-transform motion-reduce:animate-none',
+          'border-border bg-panel text-foreground fixed z-[120] overflow-y-auto p-5 shadow-2xl will-change-transform outline-none motion-reduce:animate-none',
           sideClasses[side] || sideClasses.right,
           className,
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 grid size-9 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus" aria-label="Close panel">
+        <DialogPrimitive.Close
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-focus absolute top-4 right-4 grid size-9 place-items-center rounded-lg transition-colors outline-none hover:bg-white/[0.06] focus-visible:ring-2"
+          aria-label="Close panel"
+        >
           <X className="size-4" aria-hidden="true" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
@@ -41,10 +47,28 @@ export const SheetContent = React.forwardRef(function SheetContent({
   );
 });
 
-export const SheetTitle = React.forwardRef(function SheetTitle({ className, ...props }, ref) {
-  return <DialogPrimitive.Title ref={ref} className={cn('text-base font-semibold', className)} {...props} />;
+export const SheetTitle = React.forwardRef(function SheetTitle(
+  { className, ...props },
+  ref,
+) {
+  return (
+    <DialogPrimitive.Title
+      ref={ref}
+      className={cn('text-base font-semibold', className)}
+      {...props}
+    />
+  );
 });
 
-export const SheetDescription = React.forwardRef(function SheetDescription({ className, ...props }, ref) {
-  return <DialogPrimitive.Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />;
+export const SheetDescription = React.forwardRef(function SheetDescription(
+  { className, ...props },
+  ref,
+) {
+  return (
+    <DialogPrimitive.Description
+      ref={ref}
+      className={cn('text-muted-foreground text-sm', className)}
+      {...props}
+    />
+  );
 });

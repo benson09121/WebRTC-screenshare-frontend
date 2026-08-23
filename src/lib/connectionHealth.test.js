@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { getConnectionHealthPresentation } from './connectionHealth.js';
 
@@ -25,7 +25,10 @@ test('keeps healthy transport status separate from upload encoder adaptation', (
   assert.equal(presentation.quality, 'good');
   assert.equal(presentation.statusLabel, 'Connection good');
   assert.equal(presentation.action.title, 'Video adapting to upload');
-  assert.match(presentation.action.description, /transport is otherwise healthy/);
+  assert.match(
+    presentation.action.description,
+    /transport is otherwise healthy/,
+  );
 });
 
 test('shows signaling reconnect separately when media is not connected', () => {

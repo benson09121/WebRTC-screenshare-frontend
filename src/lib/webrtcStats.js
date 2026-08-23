@@ -23,10 +23,20 @@ const QUALITY_REASON_PRIORITY = {
 };
 
 const rateFromCounter = (current, previous, counterName) => {
-  if (!previous || current[counterName] == null || previous[counterName] == null) return 0;
+  if (
+    !previous ||
+    current[counterName] == null ||
+    previous[counterName] == null
+  )
+    return 0;
   const elapsedSeconds = (current.timestamp - previous.timestamp) / 1000;
   if (elapsedSeconds <= 0) return 0;
-  return Math.max(0, ((current[counterName] - previous[counterName]) * 8) / elapsedSeconds / 1000);
+  return Math.max(
+    0,
+    ((current[counterName] - previous[counterName]) * 8) /
+      elapsedSeconds /
+      1000,
+  );
 };
 
 const chooseLargerVideo = (current, candidate) => {
@@ -51,14 +61,14 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
   let inboundVideo = null;
   let selectedPair = null;
 
-  report.forEach(stat => {
+  report.forEach((stat) => {
     statsById.set(stat.id, stat);
     if (stat.type === 'transport' && stat.selectedCandidatePairId) {
       selectedPairIds.add(stat.selectedCandidatePairId);
     }
   });
 
-  report.forEach(stat => {
+  report.forEach((stat) => {
     const previous = previousSamples.get(stat.id);
     nextSamples.set(stat.id, {
       timestamp: stat.timestamp,
@@ -69,7 +79,11 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
       framesDropped: stat.framesDropped,
     });
 
-    if (stat.type === 'outbound-rtp' && !stat.isRemote && stat.active !== false) {
+    if (
+      stat.type === 'outbound-rtp' &&
+      !stat.isRemote &&
+      stat.active !== false
+    ) {
       sendBitrateKbps += rateFromCounter(stat, previous, 'bytesSent');
 
       if (stat.kind === 'video' || stat.mediaType === 'video') {
@@ -77,12 +91,17 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
           width: stat.frameWidth || null,
           height: stat.frameHeight || null,
           framesPerSecond: stat.framesPerSecond || null,
-          targetBitrateKbps: stat.targetBitrate ? Math.round(stat.targetBitrate / 1000) : null,
+          targetBitrateKbps: stat.targetBitrate
+            ? Math.round(stat.targetBitrate / 1000)
+            : null,
         };
         outboundVideo = chooseLargerVideo(outboundVideo, candidate);
 
         const reason = stat.qualityLimitationReason || 'none';
-        if (QUALITY_REASON_PRIORITY[reason] > QUALITY_REASON_PRIORITY[qualityLimitationReason]) {
+        if (
+          QUALITY_REASON_PRIORITY[reason] >
+          QUALITY_REASON_PRIORITY[qualityLimitationReason]
+        ) {
           qualityLimitationReason = reason;
         }
       }
@@ -92,7 +111,10 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
       receiveBitrateKbps += rateFromCounter(stat, previous, 'bytesReceived');
 
       const receivedDelta = previous
-        ? Math.max(0, (stat.packetsReceived || 0) - (previous.packetsReceived || 0))
+        ? Math.max(
+            0,
+            (stat.packetsReceived || 0) - (previous.packetsReceived || 0),
+          )
         : 0;
       const lostDelta = previous
         ? Math.max(0, (stat.packetsLost || 0) - (previous.packetsLost || 0))
@@ -102,7 +124,10 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
 
       if (stat.kind === 'video' || stat.mediaType === 'video') {
         droppedFrames += previous
-          ? Math.max(0, (stat.framesDropped || 0) - (previous.framesDropped || 0))
+          ? Math.max(
+              0,
+              (stat.framesDropped || 0) - (previous.framesDropped || 0),
+            )
           : 0;
         inboundVideo = chooseLargerVideo(inboundVideo, {
           width: stat.frameWidth || null,
@@ -113,19 +138,21 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
     }
 
     if (
-      stat.type === 'candidate-pair'
-      && stat.state === 'succeeded'
-      && (stat.nominated || selectedPairIds.has(stat.id))
+      stat.type === 'candidate-pair' &&
+      stat.state === 'succeeded' &&
+      (stat.nominated || selectedPairIds.has(stat.id))
     ) {
       selectedPair = stat;
     }
   });
 
   const packetTotal = packetsReceived + packetsLost;
-  const packetLossPercent = packetTotal > 0 ? (packetsLost / packetTotal) * 100 : 0;
-  const roundTripTimeMs = selectedPair?.currentRoundTripTime != null
-    ? selectedPair.currentRoundTripTime * 1000
-    : null;
+  const packetLossPercent =
+    packetTotal > 0 ? (packetsLost / packetTotal) * 100 : 0;
+  const roundTripTimeMs =
+    selectedPair?.currentRoundTripTime != null
+      ? selectedPair.currentRoundTripTime * 1000
+      : null;
 
   const localCandidate = selectedPair?.localCandidateId
     ? statsById.get(selectedPair.localCandidateId)
@@ -133,14 +160,19 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
   const remoteCandidate = selectedPair?.remoteCandidateId
     ? statsById.get(selectedPair.remoteCandidateId)
     : null;
-  const usesRelay = localCandidate?.candidateType === 'relay' || remoteCandidate?.candidateType === 'relay';
+  const usesRelay =
+    localCandidate?.candidateType === 'relay' ||
+    remoteCandidate?.candidateType === 'relay';
 
   let quality = 'good';
-  if (packetLossPercent >= 5 || (roundTripTimeMs != null && roundTripTimeMs >= 400)) {
+  if (
+    packetLossPercent >= 5 ||
+    (roundTripTimeMs != null && roundTripTimeMs >= 400)
+  ) {
     quality = 'poor';
   } else if (
-    packetLossPercent >= 2
-    || (roundTripTimeMs != null && roundTripTimeMs >= 200)
+    packetLossPercent >= 2 ||
+    (roundTripTimeMs != null && roundTripTimeMs >= 200)
   ) {
     quality = 'fair';
   }
@@ -151,7 +183,8 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
       status: 'ready',
       quality,
       qualityLimitationReason,
-      roundTripTimeMs: roundTripTimeMs == null ? null : Math.round(roundTripTimeMs),
+      roundTripTimeMs:
+        roundTripTimeMs == null ? null : Math.round(roundTripTimeMs),
       packetLossPercent: Math.round(packetLossPercent * 10) / 10,
       droppedFrames,
       sendBitrateKbps: Math.round(sendBitrateKbps),
@@ -161,7 +194,11 @@ export const summarizeWebRTCStats = (report, previousSamples = new Map()) => {
         : null,
       outboundVideo,
       inboundVideo,
-      connectionPath: selectedPair ? (usesRelay ? 'relay' : 'direct') : 'unknown',
+      connectionPath: selectedPair
+        ? usesRelay
+          ? 'relay'
+          : 'direct'
+        : 'unknown',
       protocol: localCandidate?.protocol || null,
       measuredAt: Date.now(),
     },

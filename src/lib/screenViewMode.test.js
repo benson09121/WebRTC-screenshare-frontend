@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   getContainedMediaSize,
@@ -16,7 +16,10 @@ test('normalizes unsupported screen view modes to fit', () => {
 test('maps fit, fill, and pixel modes to distinct video layouts', () => {
   assert.match(getScreenVideoLayout('fit').videoClassName, /object-contain/);
   assert.match(getScreenVideoLayout('fill').videoClassName, /object-cover/);
-  assert.match(getScreenVideoLayout('pixel').viewportClassName, /overflow-auto/);
+  assert.match(
+    getScreenVideoLayout('pixel').viewportClassName,
+    /overflow-auto/,
+  );
   assert.match(getScreenVideoLayout('pixel').videoClassName, /max-w-none/);
 });
 

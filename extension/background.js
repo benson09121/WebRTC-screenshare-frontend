@@ -1,8 +1,12 @@
 const tabs = new Map();
 
-const getTabState = tabId => {
+const getTabState = (tabId) => {
   if (!tabs.has(tabId)) {
-    tabs.set(tabId, { pairbeamFrameId: null, playerFrameIds: new Set(), watchActive: false });
+    tabs.set(tabId, {
+      pairbeamFrameId: null,
+      playerFrameIds: new Set(),
+      watchActive: false,
+    });
   }
   return tabs.get(tabId);
 };
@@ -14,7 +18,7 @@ const sendToFrame = (tabId, frameId, message) => {
   });
 };
 
-const sendStatus = tabId => {
+const sendStatus = (tabId) => {
   const state = tabs.get(tabId);
   if (!state || !Number.isInteger(state.pairbeamFrameId)) return;
   sendToFrame(tabId, state.pairbeamFrameId, {
@@ -26,16 +30,21 @@ const sendStatus = tabId => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
-  if (!Number.isInteger(tabId) || !message || typeof message !== 'object') return false;
+  if (!Number.isInteger(tabId) || !message || typeof message !== 'object')
+    return false;
   const state = getTabState(tabId);
 
   if (message.source === 'pairbeam-bridge' && message.type === 'register') {
     state.pairbeamFrameId = sender.frameId;
     state.watchActive = Boolean(message.watchActive);
     sendStatus(tabId);
-    chrome.tabs.sendMessage(tabId, { target: 'vidking-player', type: 'register-request' }, () => {
-      void chrome.runtime.lastError;
-    });
+    chrome.tabs.sendMessage(
+      tabId,
+      { target: 'vidking-player', type: 'register-request' },
+      () => {
+        void chrome.runtime.lastError;
+      },
+    );
     sendResponse({ ok: true, playerReady: state.playerFrameIds.size > 0 });
     return false;
   }
@@ -59,7 +68,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message.source === 'pairbeam-bridge' && message.type === 'watch-session') {
+  if (
+    message.source === 'pairbeam-bridge' &&
+    message.type === 'watch-session'
+  ) {
     state.watchActive = Boolean(message.active);
     sendResponse({ ok: true });
     return false;
@@ -89,9 +101,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-chrome.tabs.onRemoved.addListener(tabId => tabs.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => tabs.delete(tabId));
 
-chrome.webNavigation.onCreatedNavigationTarget.addListener(details => {
+chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
   const state = tabs.get(details.sourceTabId);
   if (!state?.watchActive || details.sourceFrameId === 0) return;
 

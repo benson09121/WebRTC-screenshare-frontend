@@ -15,20 +15,30 @@ import { Button } from './ui/button';
 
 const QUALITY_COPY = {
   good: { label: 'Connection good', dot: 'bg-teal-300', text: 'text-teal-200' },
-  fair: { label: 'Connection limited', dot: 'bg-amber-300', text: 'text-amber-200' },
+  fair: {
+    label: 'Connection limited',
+    dot: 'bg-amber-300',
+    text: 'text-amber-200',
+  },
   poor: { label: 'Connection poor', dot: 'bg-red-400', text: 'text-red-200' },
-  unknown: { label: 'Measuring connection', dot: 'bg-zinc-500', text: 'text-zinc-300' },
+  unknown: {
+    label: 'Measuring connection',
+    dot: 'bg-zinc-500',
+    text: 'text-zinc-300',
+  },
 };
 
-const formatBitrate = value => {
+const formatBitrate = (value) => {
   if (!value) return '0 kbps';
   if (value >= 1000) return `${(value / 1000).toFixed(1)} Mbps`;
   return `${value} kbps`;
 };
 
-const formatVideo = video => {
+const formatVideo = (video) => {
   if (!video?.width || !video?.height) return 'Waiting for video';
-  const fps = video.framesPerSecond ? ` · ${Math.round(video.framesPerSecond)} fps` : '';
+  const fps = video.framesPerSecond
+    ? ` · ${Math.round(video.framesPerSecond)} fps`
+    : '';
   return `${video.width} × ${video.height}${fps}`;
 };
 
@@ -54,7 +64,9 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
   const ActionIcon = action ? ACTION_ICONS[action.kind] : null;
 
   return (
-    <div className={`pointer-events-auto relative transition-opacity duration-300 ${isIdle && !open ? 'opacity-0' : 'opacity-100'}`}>
+    <div
+      className={`pointer-events-auto relative transition-opacity duration-300 ${isIdle && !open ? 'opacity-0' : 'opacity-100'}`}
+    >
       <Button
         variant="secondary"
         size="sm"
@@ -63,7 +75,9 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
         aria-controls="connection-details"
         className="w-fit bg-[#111719]/90"
       >
-        <span className={`size-2 rounded-full ${copy.dot} ${connected ? '' : 'animate-pulse'}`} />
+        <span
+          className={`size-2 rounded-full ${copy.dot} ${connected ? '' : 'animate-pulse'}`}
+        />
         {statusLabel}
       </Button>
 
@@ -71,11 +85,13 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
         <section
           id="connection-details"
           aria-label="Connection details"
-          className="absolute left-0 top-12 w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl"
+          className="absolute top-12 left-0 w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl"
         >
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
             <div>
-              <p className={`text-sm font-semibold ${copy.text}`}>{statusLabel}</p>
+              <p className={`text-sm font-semibold ${copy.text}`}>
+                {statusLabel}
+              </p>
               <p className="mt-0.5 text-xs text-zinc-500">
                 {connectionStats.connectionPath === 'relay'
                   ? 'Relayed through TURN'
@@ -89,44 +105,79 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-4 py-4">
             <div>
-              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500"><Gauge className="size-3.5" /> Round trip</dt>
-              <dd className="mt-1 font-mono text-sm text-zinc-200">{connectionStats.roundTripTimeMs == null ? '—' : `${connectionStats.roundTripTimeMs} ms`}</dd>
+              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                <Gauge className="size-3.5" /> Round trip
+              </dt>
+              <dd className="mt-1 font-mono text-sm text-zinc-200">
+                {connectionStats.roundTripTimeMs == null
+                  ? '—'
+                  : `${connectionStats.roundTripTimeMs} ms`}
+              </dd>
             </div>
             <div>
-              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500"><Radio className="size-3.5" /> Packet loss</dt>
-              <dd className="mt-1 font-mono text-sm text-zinc-200">{connectionStats.packetLossPercent == null ? '—' : `${connectionStats.packetLossPercent}%`}</dd>
+              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                <Radio className="size-3.5" /> Packet loss
+              </dt>
+              <dd className="mt-1 font-mono text-sm text-zinc-200">
+                {connectionStats.packetLossPercent == null
+                  ? '—'
+                  : `${connectionStats.packetLossPercent}%`}
+              </dd>
             </div>
             <div>
-              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500"><ArrowUp className="size-3.5" /> Sending</dt>
-              <dd className="mt-1 font-mono text-sm text-zinc-200">{formatBitrate(connectionStats.sendBitrateKbps)}</dd>
+              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                <ArrowUp className="size-3.5" /> Sending
+              </dt>
+              <dd className="mt-1 font-mono text-sm text-zinc-200">
+                {formatBitrate(connectionStats.sendBitrateKbps)}
+              </dd>
             </div>
             <div>
-              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500"><ArrowDown className="size-3.5" /> Receiving</dt>
-              <dd className="mt-1 font-mono text-sm text-zinc-200">{formatBitrate(connectionStats.receiveBitrateKbps)}</dd>
+              <dt className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                <ArrowDown className="size-3.5" /> Receiving
+              </dt>
+              <dd className="mt-1 font-mono text-sm text-zinc-200">
+                {formatBitrate(connectionStats.receiveBitrateKbps)}
+              </dd>
             </div>
           </dl>
 
           <div className="space-y-2 border-t border-white/[0.08] pt-3 text-xs">
             <div className="flex items-center justify-between gap-4">
               <span className="text-zinc-500">Outgoing video</span>
-              <span className="font-mono text-zinc-300">{formatVideo(connectionStats.outboundVideo)}</span>
+              <span className="font-mono text-zinc-300">
+                {formatVideo(connectionStats.outboundVideo)}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-zinc-500">Incoming video</span>
-              <span className="font-mono text-zinc-300">{formatVideo(connectionStats.inboundVideo)}</span>
+              <span className="font-mono text-zinc-300">
+                {formatVideo(connectionStats.inboundVideo)}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-zinc-500">Available upload</span>
-              <span className="font-mono text-zinc-300">{connectionStats.availableOutgoingBitrateKbps == null ? '—' : formatBitrate(connectionStats.availableOutgoingBitrateKbps)}</span>
+              <span className="font-mono text-zinc-300">
+                {connectionStats.availableOutgoingBitrateKbps == null
+                  ? '—'
+                  : formatBitrate(connectionStats.availableOutgoingBitrateKbps)}
+              </span>
             </div>
           </div>
 
           {action ? (
-            <div role="status" className="mt-4 flex gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.07] p-3">
+            <div
+              role="status"
+              className="mt-4 flex gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.07] p-3"
+            >
               <ActionIcon className="mt-0.5 size-4 shrink-0 text-amber-300" />
               <div>
-                <p className="text-xs font-semibold text-amber-100">{action.title}</p>
-                <p className="mt-1 text-xs leading-5 text-amber-100/60">{action.description}</p>
+                <p className="text-xs font-semibold text-amber-100">
+                  {action.title}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-amber-100/60">
+                  {action.description}
+                </p>
               </div>
             </div>
           ) : null}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 const BASE_RECONNECT_DELAY_MS = 500;
 const MAX_RECONNECT_DELAY_MS = 10000;
 
-export const useSignaling = url => {
+export const useSignaling = (url) => {
   const [status, setStatus] = useState('connecting');
   const [ws, setWs] = useState(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
@@ -19,7 +19,7 @@ export const useSignaling = url => {
 
       const delay = Math.min(
         MAX_RECONNECT_DELAY_MS,
-        BASE_RECONNECT_DELAY_MS * (2 ** attemptRef.current),
+        BASE_RECONNECT_DELAY_MS * 2 ** attemptRef.current,
       );
       attemptRef.current += 1;
       setReconnectAttempt(attemptRef.current);
@@ -52,17 +52,18 @@ export const useSignaling = url => {
 
       socket.onclose = () => {
         if (!active || currentSocket !== socket) return;
-        setWs(current => current === socket ? null : current);
+        setWs((current) => (current === socket ? null : current));
         scheduleReconnect();
       };
     };
 
     const reconnectNow = () => {
       if (
-        !active
-        || currentSocket?.readyState === WebSocket.OPEN
-        || currentSocket?.readyState === WebSocket.CONNECTING
-      ) return;
+        !active ||
+        currentSocket?.readyState === WebSocket.OPEN ||
+        currentSocket?.readyState === WebSocket.CONNECTING
+      )
+        return;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       reconnectTimer = null;
       connect();

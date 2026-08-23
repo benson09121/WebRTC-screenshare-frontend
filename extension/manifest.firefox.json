@@ -3,26 +3,17 @@
   "name": "PairBeam Vidking Sync Prototype",
   "description": "Connects PairBeam watch rooms to a Vidking player without reading or relaying its media URL.",
   "version": "0.4.2",
-  "permissions": [
-    "tabs",
-    "webNavigation"
-  ],
-  "host_permissions": [
-    "https://www.vidking.net/*"
-  ],
+  "permissions": ["tabs", "webNavigation"],
+  "host_permissions": ["https://www.vidking.net/*"],
   "background": {
-    "scripts": [
-      "background.js"
-    ]
+    "scripts": ["background.js"]
   },
   "browser_specific_settings": {
     "gecko": {
       "id": "pairbeam-vidking-sync@pairbeam.local",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": [
-          "none"
-        ]
+        "required": ["none"]
       }
     }
   },
@@ -33,18 +24,12 @@
         "http://127.0.0.1/*",
         "https://*.vercel.app/*"
       ],
-      "js": [
-        "pairbeam-bridge.js"
-      ],
+      "js": ["pairbeam-bridge.js"],
       "run_at": "document_start"
     },
     {
-      "matches": [
-        "https://www.vidking.net/embed/*"
-      ],
-      "js": [
-        "vidking-player.js"
-      ],
+      "matches": ["https://www.vidking.net/embed/*"],
+      "js": ["vidking-player.js"],
       "all_frames": true,
       "run_at": "document_idle"
     }

@@ -25,20 +25,26 @@ export const CHAT_EMOJIS = Object.freeze([
   { emoji: '🚀', label: 'Rocket', keywords: 'launch fast great' },
 ]);
 
-const CHAT_EMOJI_SET = new Set(CHAT_EMOJIS.map(item => item.emoji));
+const CHAT_EMOJI_SET = new Set(CHAT_EMOJIS.map((item) => item.emoji));
 const CHAT_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
 
-export const isSupportedChatEmoji = emoji => (
-  typeof emoji === 'string' && CHAT_EMOJI_SET.has(emoji)
-);
+export const isSupportedChatEmoji = (emoji) =>
+  typeof emoji === 'string' && CHAT_EMOJI_SET.has(emoji);
 
-export const createChatMessagePayload = ({ clientId, sequence, text, now = Date.now() }) => {
+export const createChatMessagePayload = ({
+  clientId,
+  sequence,
+  text,
+  now = Date.now(),
+}) => {
   const normalizedText = typeof text === 'string' ? text.trim() : '';
-  if (!normalizedText || normalizedText.length > CHAT_MESSAGE_MAX_LENGTH) return null;
+  if (!normalizedText || normalizedText.length > CHAT_MESSAGE_MAX_LENGTH)
+    return null;
 
-  const safeClientId = String(clientId || 'peer')
-    .replace(/[^A-Za-z0-9._-]/g, '')
-    .slice(0, 64) || 'peer';
+  const safeClientId =
+    String(clientId || 'peer')
+      .replace(/[^A-Za-z0-9._-]/g, '')
+      .slice(0, 64) || 'peer';
   const sentAt = Math.min(
     CHAT_SENT_AT_MAX,
     Math.max(0, Math.trunc(Number(now) || Date.now())),
@@ -47,8 +53,10 @@ export const createChatMessagePayload = ({ clientId, sequence, text, now = Date.
 
   return {
     type: 'chat',
-    id: `${safeClientId}:${sentAt.toString(36)}:${safeSequence.toString(36)}`
-      .slice(0, CHAT_MESSAGE_ID_MAX_LENGTH),
+    id: `${safeClientId}:${sentAt.toString(36)}:${safeSequence.toString(36)}`.slice(
+      0,
+      CHAT_MESSAGE_ID_MAX_LENGTH,
+    ),
     text: normalizedText,
     sentAt,
   };
@@ -57,23 +65,26 @@ export const createChatMessagePayload = ({ clientId, sequence, text, now = Date.
 export const normalizeChatMessagePayload = (payload, from = 'remote') => {
   if (!payload || payload.type !== 'chat') return null;
   if (
-    typeof payload.id !== 'string'
-    || payload.id.length < 1
-    || payload.id.length > CHAT_MESSAGE_ID_MAX_LENGTH
-    || !CHAT_ID_PATTERN.test(payload.id)
-  ) return null;
+    typeof payload.id !== 'string' ||
+    payload.id.length < 1 ||
+    payload.id.length > CHAT_MESSAGE_ID_MAX_LENGTH ||
+    !CHAT_ID_PATTERN.test(payload.id)
+  )
+    return null;
 
   if (
-    typeof payload.text !== 'string'
-    || !payload.text.trim()
-    || payload.text.length > CHAT_MESSAGE_MAX_LENGTH
-  ) return null;
+    typeof payload.text !== 'string' ||
+    !payload.text.trim() ||
+    payload.text.length > CHAT_MESSAGE_MAX_LENGTH
+  )
+    return null;
 
   if (
-    !Number.isSafeInteger(payload.sentAt)
-    || payload.sentAt < 0
-    || payload.sentAt > CHAT_SENT_AT_MAX
-  ) return null;
+    !Number.isSafeInteger(payload.sentAt) ||
+    payload.sentAt < 0 ||
+    payload.sentAt > CHAT_SENT_AT_MAX
+  )
+    return null;
 
   return {
     id: payload.id,
@@ -85,20 +96,22 @@ export const normalizeChatMessagePayload = (payload, from = 'remote') => {
 };
 
 export const appendUniqueChatMessage = (messages, message) => {
-  if (!message || messages.some(item => item.id === message.id)) return messages;
+  if (!message || messages.some((item) => item.id === message.id))
+    return messages;
   return [...messages, message];
 };
 
-export const normalizeChatReactionPayload = payload => {
+export const normalizeChatReactionPayload = (payload) => {
   if (!payload || payload.type !== 'chat-reaction') return null;
   if (
-    typeof payload.messageId !== 'string'
-    || payload.messageId.length < 1
-    || payload.messageId.length > CHAT_MESSAGE_ID_MAX_LENGTH
-    || !CHAT_ID_PATTERN.test(payload.messageId)
-    || !isSupportedChatEmoji(payload.emoji)
-    || typeof payload.active !== 'boolean'
-  ) return null;
+    typeof payload.messageId !== 'string' ||
+    payload.messageId.length < 1 ||
+    payload.messageId.length > CHAT_MESSAGE_ID_MAX_LENGTH ||
+    !CHAT_ID_PATTERN.test(payload.messageId) ||
+    !isSupportedChatEmoji(payload.emoji) ||
+    typeof payload.active !== 'boolean'
+  )
+    return null;
 
   return {
     type: 'chat-reaction',
@@ -113,7 +126,9 @@ export const applyChatReaction = (messages, reaction, actor) => {
   const normalizedActor = actor === 'local' ? 'local' : 'remote';
   if (!normalized) return messages;
 
-  const messageIndex = messages.findIndex(message => message.id === normalized.messageId);
+  const messageIndex = messages.findIndex(
+    (message) => message.id === normalized.messageId,
+  );
   if (messageIndex < 0) return messages;
 
   const message = messages[messageIndex];
@@ -125,7 +140,8 @@ export const applyChatReaction = (messages, reaction, actor) => {
   if (!nextActors.remote) delete nextActors.remote;
 
   const nextReactions = { ...(message.reactions || {}) };
-  if (Object.keys(nextActors).length) nextReactions[normalized.emoji] = nextActors;
+  if (Object.keys(nextActors).length)
+    nextReactions[normalized.emoji] = nextActors;
   else delete nextReactions[normalized.emoji];
 
   const nextMessages = [...messages];
@@ -133,8 +149,11 @@ export const applyChatReaction = (messages, reaction, actor) => {
   return nextMessages;
 };
 
-export const getChatReactionSummary = message => Object.entries(message?.reactions || {})
-  .flatMap(([emoji, actors]) => {
-    const count = Number(Boolean(actors?.local)) + Number(Boolean(actors?.remote));
-    return count ? [{ emoji, count, reactedByLocal: Boolean(actors.local) }] : [];
+export const getChatReactionSummary = (message) =>
+  Object.entries(message?.reactions || {}).flatMap(([emoji, actors]) => {
+    const count =
+      Number(Boolean(actors?.local)) + Number(Boolean(actors?.remote));
+    return count
+      ? [{ emoji, count, reactedByLocal: Boolean(actors.local) }]
+      : [];
   });

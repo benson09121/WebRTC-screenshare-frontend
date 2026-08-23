@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   formatMediaTime,
@@ -22,8 +22,16 @@ import {
 
 test('treats a superseded play request as normal synchronization cancellation', () => {
   assert.equal(isExpectedPlaybackInterruption({ name: 'AbortError' }), true);
-  assert.equal(isExpectedPlaybackInterruption(new Error('The play() request was interrupted by a call to pause().')), true);
-  assert.equal(isExpectedPlaybackInterruption(new Error('The decoder failed.')), false);
+  assert.equal(
+    isExpectedPlaybackInterruption(
+      new Error('The play() request was interrupted by a call to pause().'),
+    ),
+    true,
+  );
+  assert.equal(
+    isExpectedPlaybackInterruption(new Error('The decoder failed.')),
+    false,
+  );
 });
 
 test('formats movie times without exposing invalid values', () => {
@@ -33,11 +41,14 @@ test('formats movie times without exposing invalid values', () => {
 });
 
 test('preserves the movie natural dimensions and display aspect ratio', () => {
-  assert.deepEqual(getMovieVideoGeometry({ videoWidth: 1920, videoHeight: 800 }), {
-    width: 1920,
-    height: 800,
-    aspectRatio: 2.4,
-  });
+  assert.deepEqual(
+    getMovieVideoGeometry({ videoWidth: 1920, videoHeight: 800 }),
+    {
+      width: 1920,
+      height: 800,
+      aspectRatio: 2.4,
+    },
+  );
   assert.deepEqual(getMovieVideoGeometry({ videoWidth: 0, videoHeight: 0 }), {
     width: null,
     height: null,
@@ -58,7 +69,10 @@ test('uses the standard captureStream implementation when available', () => {
 
 test('falls back to the Firefox-prefixed capture implementation', () => {
   const expected = { id: 'firefox-stream' };
-  assert.equal(getCaptureStream({ mozCaptureStream: () => expected }), expected);
+  assert.equal(
+    getCaptureStream({ mozCaptureStream: () => expected }),
+    expected,
+  );
   assert.equal(getCaptureStream({}), null);
 });
 
@@ -98,18 +112,27 @@ test('normalizes direct http media URLs without exposing query data as a title',
     'https://media.example/movie.mp4?token=secret',
   );
   assert.equal(
-    getDirectMediaDisplayName('https://media.example/movies/My%20Movie.mp4?token=secret'),
+    getDirectMediaDisplayName(
+      'https://media.example/movies/My%20Movie.mp4?token=secret',
+    ),
     'My Movie.mp4',
   );
 });
 
 test('rejects unsupported protocols and known video-page URLs', () => {
-  assert.throws(() => normalizeDirectMediaUrl('file:///tmp/movie.mp4'), /valid http/);
   assert.throws(
-    () => normalizeDirectMediaUrl('https://viewer:secret@example.com/movie.mp4'),
+    () => normalizeDirectMediaUrl('file:///tmp/movie.mp4'),
+    /valid http/,
+  );
+  assert.throws(
+    () =>
+      normalizeDirectMediaUrl('https://viewer:secret@example.com/movie.mp4'),
     /username or password/,
   );
-  assert.throws(() => normalizeDirectMediaUrl('https://youtube.com/watch?v=123'), /video page/);
+  assert.throws(
+    () => normalizeDirectMediaUrl('https://youtube.com/watch?v=123'),
+    /video page/,
+  );
   assert.throws(() => normalizeDirectMediaUrl('not a url'), /valid http/);
 });
 
@@ -119,7 +142,10 @@ test('sanitizes a direct URL received from a peer', () => {
     'https://media.example/movie.mp4?token=abc',
   );
   assert.equal(sanitizeSharedDirectMediaUrl('javascript:alert(1)'), null);
-  assert.equal(sanitizeSharedDirectMediaUrl('https://youtube.com/watch?v=1'), null);
+  assert.equal(
+    sanitizeSharedDirectMediaUrl('https://youtube.com/watch?v=1'),
+    null,
+  );
   assert.equal(sanitizeSharedDirectMediaUrl('x'.repeat(4097)), null);
 });
 
@@ -161,8 +187,20 @@ test('reads, selects, and renders native subtitle tracks when exposed', () => {
   const mediaElement = {
     textTracks: [
       { kind: 'metadata', mode: 'hidden', activeCues: [] },
-      { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled', activeCues: [] },
-      { kind: 'subtitles', label: '', language: 'ja', mode: 'showing', activeCues: [{ text: 'こんにちは' }] },
+      {
+        kind: 'subtitles',
+        label: 'English',
+        language: 'en',
+        mode: 'disabled',
+        activeCues: [],
+      },
+      {
+        kind: 'subtitles',
+        label: '',
+        language: 'ja',
+        mode: 'showing',
+        activeCues: [{ text: 'こんにちは' }],
+      },
     ],
   };
 

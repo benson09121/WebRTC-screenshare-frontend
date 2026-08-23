@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   appendUniqueChatMessage,
@@ -25,14 +25,39 @@ test('creates one bounded chat identity that the receiver preserves', () => {
 });
 
 test('rejects malformed messages and deduplicates retransmitted identities', () => {
-  assert.equal(normalizeChatMessagePayload({ type: 'chat', id: '../bad', text: 'hello', sentAt: 4 }), null);
-  assert.equal(normalizeChatMessagePayload({ type: 'chat', id: 'valid:1', text: '   ', sentAt: 4 }), null);
-  assert.equal(normalizeChatMessagePayload({
-    type: 'chat', id: 'valid:1', text: 'hello', sentAt: Number.MAX_SAFE_INTEGER,
-  }), null);
+  assert.equal(
+    normalizeChatMessagePayload({
+      type: 'chat',
+      id: '../bad',
+      text: 'hello',
+      sentAt: 4,
+    }),
+    null,
+  );
+  assert.equal(
+    normalizeChatMessagePayload({
+      type: 'chat',
+      id: 'valid:1',
+      text: '   ',
+      sentAt: 4,
+    }),
+    null,
+  );
+  assert.equal(
+    normalizeChatMessagePayload({
+      type: 'chat',
+      id: 'valid:1',
+      text: 'hello',
+      sentAt: Number.MAX_SAFE_INTEGER,
+    }),
+    null,
+  );
 
   const message = normalizeChatMessagePayload({
-    type: 'chat', id: 'peer:1:0', text: 'hello', sentAt: 4,
+    type: 'chat',
+    id: 'peer:1:0',
+    text: 'hello',
+    sentAt: 4,
   });
   const once = appendUniqueChatMessage([], message);
   assert.equal(appendUniqueChatMessage(once, message), once);
@@ -40,10 +65,16 @@ test('rejects malformed messages and deduplicates retransmitted identities', () 
 
 test('applies desired reaction state idempotently per participant', () => {
   const message = normalizeChatMessagePayload({
-    type: 'chat', id: 'peer:1:0', text: 'hello', sentAt: 4,
+    type: 'chat',
+    id: 'peer:1:0',
+    text: 'hello',
+    sentAt: 4,
   });
   const reaction = {
-    type: 'chat-reaction', messageId: message.id, emoji: '👍', active: true,
+    type: 'chat-reaction',
+    messageId: message.id,
+    emoji: '👍',
+    active: true,
   };
 
   const local = applyChatReaction([message], reaction, 'local');
@@ -53,17 +84,33 @@ test('applies desired reaction state idempotently per participant', () => {
     { emoji: '👍', count: 2, reactedByLocal: true },
   ]);
 
-  const removed = applyChatReaction(both, { ...reaction, active: false }, 'local');
+  const removed = applyChatReaction(
+    both,
+    { ...reaction, active: false },
+    'local',
+  );
   assert.deepEqual(getChatReactionSummary(removed[0]), [
     { emoji: '👍', count: 1, reactedByLocal: false },
   ]);
 });
 
 test('rejects unknown emojis and invalid reaction targets', () => {
-  assert.equal(normalizeChatReactionPayload({
-    type: 'chat-reaction', messageId: 'peer:1:0', emoji: '🪄', active: true,
-  }), null);
-  assert.equal(normalizeChatReactionPayload({
-    type: 'chat-reaction', messageId: '../bad', emoji: '👍', active: true,
-  }), null);
+  assert.equal(
+    normalizeChatReactionPayload({
+      type: 'chat-reaction',
+      messageId: 'peer:1:0',
+      emoji: '🪄',
+      active: true,
+    }),
+    null,
+  );
+  assert.equal(
+    normalizeChatReactionPayload({
+      type: 'chat-reaction',
+      messageId: '../bad',
+      emoji: '👍',
+      active: true,
+    }),
+    null,
+  );
 });

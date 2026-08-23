@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   advanceAutoQuality,
@@ -32,25 +32,37 @@ test('downgrades only after sustained encoder pressure', () => {
 
 test('uses constrained outgoing bitrate to react faster to bandwidth pressure', () => {
   let state = createAutoQualityState(1);
-  state = advanceAutoQuality(state, {
-    qualityLimitationReason: 'bandwidth',
-    sendBitrateKbps: 1200,
-    targetBitrateKbps: 3000,
-  }, 1000);
+  state = advanceAutoQuality(
+    state,
+    {
+      qualityLimitationReason: 'bandwidth',
+      sendBitrateKbps: 1200,
+      targetBitrateKbps: 3000,
+    },
+    1000,
+  );
   assert.equal(state.index, 1);
 
-  state = advanceAutoQuality(state, {
-    qualityLimitationReason: 'bandwidth',
-    sendBitrateKbps: 1200,
-    targetBitrateKbps: 3000,
-  }, 3000);
+  state = advanceAutoQuality(
+    state,
+    {
+      qualityLimitationReason: 'bandwidth',
+      sendBitrateKbps: 1200,
+      targetBitrateKbps: 3000,
+    },
+    3000,
+  );
   assert.equal(state.index, 2);
 });
 
 test('recovers gradually after eight healthy samples and honors cooldown', () => {
   let state = { ...createAutoQualityState(2), lastChangedAt: 5000 };
   for (let index = 0; index < 8; index += 1) {
-    state = advanceAutoQuality(state, { qualityLimitationReason: 'none' }, 7000 + index * 1000);
+    state = advanceAutoQuality(
+      state,
+      { qualityLimitationReason: 'none' },
+      7000 + index * 1000,
+    );
   }
   assert.equal(state.index, 2);
 
@@ -70,18 +82,21 @@ test('summarizes the active screen sender dimensions, fps, bitrate, and limitati
     ['screen', { timestamp: 1000, bytesSent: 100000 }],
   ]);
   const report = new Map([
-    ['screen', {
-      id: 'screen',
-      type: 'outbound-rtp',
-      timestamp: 3000,
-      kind: 'video',
-      bytesSent: 1100000,
-      frameWidth: 1280,
-      frameHeight: 720,
-      framesPerSecond: 55,
-      targetBitrate: 6000000,
-      qualityLimitationReason: 'bandwidth',
-    }],
+    [
+      'screen',
+      {
+        id: 'screen',
+        type: 'outbound-rtp',
+        timestamp: 3000,
+        kind: 'video',
+        bytesSent: 1100000,
+        frameWidth: 1280,
+        frameHeight: 720,
+        framesPerSecond: 55,
+        targetBitrate: 6000000,
+        qualityLimitationReason: 'bandwidth',
+      },
+    ],
   ]);
 
   const { stats } = summarizeScreenSenderStats(report, previous);

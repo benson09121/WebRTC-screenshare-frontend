@@ -3,38 +3,46 @@
 This document outlines the UI behaviors and conditions implemented.
 
 ## 1. User Avatar Placeholder
+
 - **Condition:** Triggers when the user mutes their camera or when the connection is initializing and video tracks are not yet available.
 - **Behavior:** Hides the black screen and renders a pulsing `User` icon inside a placeholder div.
 
 ## 2. Auto-hide Control Panel
+
 - **Condition:** Triggers after 3 seconds without pointer, click, or keyboard activity anywhere on the screen.
 - **Behavior:** Outside fullscreen, the bottom Control Panel fades out and translates downward. In fullscreen, all PairBeam chrome fades out and becomes non-interactive together: the open chat panel or chat launcher, left episode arrow, bottom dashboard and its down-arrow handle, Fullscreen, and Stop watching. A hidden docked chat panel releases its reserved stage width. Any activity restores the chrome and restarts the timer; the companion extension forwards activity from the cross-origin provider iframe, whose DOM events cannot reach the parent page directly.
 
 ## 3. Fullscreen Constraints
+
 - **Condition:** The `Fullscreen` button (Maximize) is strictly conditionally rendered.
 - **Behavior:** It only appears if there is an active screen share (either `hasRemoteScreen` or `hasLocalScreen`). If no one is sharing their screen, the Fullscreen button is completely hidden.
 
 ## 4. Local Screen Share Loopback
+
 - **Condition:** When the user initiates a screen share.
 - **Behavior:** The `mainStream` intelligently prioritizes the `localScreenStream`, meaning the user who is sharing their screen will actually see their own shared screen in the main view.
 
 ## 5. Draggable In-Page Camera Previews
+
 - **Condition:** Active for the local camera preview and for the participant camera shown over a selected screen share or external watch provider.
 - **Behavior:** Uses `framer-motion` dragging constrained to the call stage, keeps the participant preview above shared/external media, and disables drag momentum. Dragging only repositions the preview; it never changes the selected main view. Focus and desktop Picture-in-Picture are separate explicit buttons.
 
 ## 6. Fullscreen Auto-hide (Global Idle State)
+
 - **Condition:** Triggers 3 seconds after no mouse movement while in Fullscreen mode.
 - **Behavior:** Hides the main Control Panel, the Fullscreen toggle buttons, the top Room Information bar, and all in-page camera previews. The screen becomes entirely devoted to the shared stream. Chat remains interactive, but pointer movement and typing inside it do not wake the underlying media controls.
 
 ## 7. Fullscreen Chat Accessibility
+
 - **Condition:** The participant opens Chat while a screen share is fullscreen.
 - **Behavior:** Chat opens as a narrow docked rail on wide screens, reserving layout space so it does not cover the shared content. On narrow screens it becomes a bounded bottom sheet. Closing Chat returns the shared view to its full available size.
 - **Ordinary room:** Outside fullscreen and presentation mode, chat overlays the stage and does not resize or shift the video. During external-provider playback, its launcher sits at the right-center instead of covering the provider's bottom-right controls.
 - **Keyboard behavior:** The launcher and close control are keyboard reachable; `Enter` sends, `Shift+Enter` inserts a newline, `Escape` closes the panel, and new messages are announced through a polite live region.
 
 ## 8. Chat Notifications
+
 - **Condition:** Triggers when a new message is received via the WebRTC DataChannel, but only if the Chat Panel is currently closed.
-- **Behavior:** 
+- **Behavior:**
   - Shows a compact, dismissible "New message" preview without exposing message text over a shared screen.
   - Increments a notification badge on the chat launcher without automatically opening the panel.
   - Optionally generates a throttled, low-volume synthetic blip using the browser's native `AudioContext`.
@@ -42,6 +50,7 @@ This document outlines the UI behaviors and conditions implemented.
   - When the user opens the chat, the badge disappears and the counter resets.
 
 ## 9. Simultaneous Screen Shares
+
 - **Condition:** Either or both participants are sharing a screen.
 - **Behavior:** A `Viewing` switch appears with `Participant`, `Their screen`, and `Your screen` when each source is available.
 - **Media readiness:** A remote share is offered as a view only after its negotiated video stream exists; a status message alone never moves the viewer into a permanent loading screen.
@@ -50,6 +59,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **New remote share:** The remote share becomes the main view when the participant camera was selected. It does not interrupt another screen already being watched.
 
 ## 10. Screen Share End Fallback
+
 - **Selected share ends:** Switch to the other active share when one exists.
 - **Final share ends:** Switch to the participant camera view.
 - **Camera unavailable or off:** Render the participant user-icon placeholder instead of retaining the final shared frame.
@@ -60,17 +70,20 @@ This document outlines the UI behaviors and conditions implemented.
 - **Subtitles:** External SRT files remain on the host device. The host may load or replace an SRT before or during playback. Parse cues locally, send only the currently active cue over the data channel, and render it as inert text over both movie views. When the source browser exposes embedded text tracks, either participant may choose one during playback; the host applies the shared selection and publishes the resulting cue. A UI player must not claim embedded MKV support when the browser did not demux those tracks.
 
 ## 11. Component System
+
 - **Foundation:** Tailwind CSS v4 with local shadcn-style components backed by Radix UI primitives.
 - **Current primitives:** Button, Input, Textarea, Tabs, Tooltip, and Popover, all backed by semantic canvas, panel, foreground, muted, border, primary, destructive, and focus tokens.
 - **Accessibility:** Icon buttons have accessible names, tabs support keyboard navigation, controls use visible focus rings, and dynamic waiting/error states use live regions.
 
 ## 12. Connection Health
+
 - **Sampling:** Collect standardized `RTCPeerConnection.getStats()` reports every two seconds while media is connected.
 - **Summary:** Show round-trip time, interval packet loss, sending and receiving bitrate, actual video dimensions/FPS, available upload bandwidth, and direct/relay path.
 - **Actionable states:** Packet loss and round-trip time determine transport health. Browser `qualityLimitationReason` values are displayed separately as device/CPU, upload-bandwidth, or other video adaptation so local encoder pressure is not mislabeled as a failing connection.
 - **Rendering:** Cumulative counters stay outside React state; only the summarized health snapshot updates the interface.
 
 ## 13. Signaling Recovery and Presence
+
 - **Reconnect:** Retry WebSocket signaling with exponential delays starting at 500 ms and capped at 10 seconds.
 - **Session identity:** Use an ephemeral per-page client ID so a reconnect replaces its stale socket instead of occupying another room slot.
 - **Presence:** Explicitly represent waiting, joining, connected, reconnecting, and participant-left states.
@@ -78,12 +91,14 @@ This document outlines the UI behaviors and conditions implemented.
 - **Capacity:** Reject a third participant with an inline room-full error.
 
 ## 14. Desktop Picture-in-Picture
+
 - **Availability:** Render the desktop PiP control only when the browser exposes `document.pictureInPictureEnabled` and `HTMLVideoElement.requestPictureInPicture()`.
 - **Sources:** The active main video, the participant camera preview, and the local camera preview can each be opened as the single browser-managed PiP video.
 - **Desktop behavior:** The browser and operating-system window manager create and position the floating window outside PairBeam. PairBeam cannot force arbitrary application windows to stay on top.
 - **Failure state:** If the video is not ready or the browser rejects the request, keep the call unchanged and show an inline, accessible error.
 
 ## 15. Screen-Share Audio
+
 - **Capture request:** Ask the browser for screen/window audio through top-level `systemAudio` and `windowAudio` hints. The selected surface and browser decide whether an audio track is returned.
 - **Mute independence:** Rebuild the outgoing microphone/screen mix whenever the microphone is muted, enabled, or changed. Muting the microphone must not remove a live screen-audio track from the sender.
 - **Linux fallback:** When the browser exposes a non-virtual PipeWire/PulseAudio physical-output monitor as an audio input, allow the user to select it explicitly. Do not select or capture a monitor without user action.
@@ -91,6 +106,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **Cleanup:** Stop monitor/display tracks and close the mixing `AudioContext` when sharing or the call ends.
 
 ## 16. Adaptive Screen Quality
+
 - **Default:** New shares use Auto quality. Motion starts at 720p60; text/detail starts at 1080p20.
 - **Content-aware order:** Under sustained pressure, motion shares reduce resolution before frame rate. Text/detail shares reduce frame rate before resolution to preserve readable text.
 - **Feedback loop:** Sample only the screen `RTCRtpSender` every two seconds. CPU, bandwidth, and other browser limitation reasons drive adaptation; constrained outgoing bitrate makes a bandwidth downgrade happen sooner.
@@ -100,6 +116,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **Compatibility:** If capture constraints are rejected, keep sharing and use sender scaling/bitrate limits when supported rather than ending the share.
 
 ## 17. Presentation and Screen Sizing
+
 - **Availability:** Presentation mode and screen-sizing controls appear only while a local or remote screen is selected as the main view.
 - **Presentation mode:** Hide the room header, source selector, camera previews, bottom call controls, and secondary video actions. Keep room chat available and retain an explicit “Exit focus” control that never becomes noninteractive.
 - **Share end:** If the selected screen ends and the view falls back to the participant camera, presentation mode exits automatically.
@@ -113,6 +130,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **Accessibility:** Use keyboard-navigable Tabs for sizing, `aria-pressed` for presentation state, visible focus rings, and a polite live region for mode changes.
 
 ## 18. Error Banner Lifetime
+
 - **Transient errors:** Media-device, screen-share, and Picture-in-Picture errors remain visible for seven seconds and then dismiss automatically.
 - **Repeated errors:** A newly reported error restarts the full seven-second timer, including when its message matches the current error.
 - **Manual dismissal:** Every transient error banner includes a keyboard-accessible close button with an accessible name.

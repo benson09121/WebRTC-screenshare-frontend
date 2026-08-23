@@ -1,4 +1,8 @@
-const createAction = (kind, title, description) => ({ kind, title, description });
+const createAction = (kind, title, description) => ({
+  kind,
+  title,
+  description,
+});
 
 export const getConnectionHealthPresentation = ({
   connected,

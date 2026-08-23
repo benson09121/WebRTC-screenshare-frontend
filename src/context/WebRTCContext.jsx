@@ -1,8 +1,17 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useSignaling } from '../hooks/useSignaling';
-import { EMPTY_CONNECTION_STATS, summarizeWebRTCStats } from '../lib/webrtcStats';
-import { createEmptyAudioTrack, createEmptyVideoTrack } from '../lib/mediaTracks';
-import { DEFAULT_PLAYBACK_VOLUMES, normalizePlaybackVolume } from '../lib/playbackVolume';
+import {
+  EMPTY_CONNECTION_STATS,
+  summarizeWebRTCStats,
+} from '../lib/webrtcStats';
+import {
+  createEmptyAudioTrack,
+  createEmptyVideoTrack,
+} from '../lib/mediaTracks';
+import {
+  DEFAULT_PLAYBACK_VOLUMES,
+  normalizePlaybackVolume,
+} from '../lib/playbackVolume';
 import { sanitizeSharedDirectMediaUrl } from '../lib/movieShare';
 import {
   createExternalWatchProposal,
@@ -30,9 +39,8 @@ import { WebRTCContext } from './useWebRTC';
 const EXTERNAL_MEDIA_SWITCH_GUARD_MS = 750;
 
 const getIceServers = () => {
-  const configuredStunUrls = import.meta.env.VITE_STUN_URLS
-    ?.split(',')
-    .map(url => url.trim())
+  const configuredStunUrls = import.meta.env.VITE_STUN_URLS?.split(',')
+    .map((url) => url.trim())
     .filter(Boolean);
   const servers = [
     {
@@ -42,9 +50,11 @@ const getIceServers = () => {
     },
   ];
 
-  const configuredTurnUrls = (import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_URL)
+  const configuredTurnUrls = (
+    import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_URL
+  )
     ?.split(',')
-    .map(url => url.trim())
+    .map((url) => url.trim())
     .filter(Boolean);
   if (configuredTurnUrls?.length) {
     servers.push({
@@ -57,29 +67,32 @@ const getIceServers = () => {
   return { iceServers: servers };
 };
 
-const isSameExternalSeries = (session, media) => Boolean(
-  session?.media?.mediaType === 'tv'
-  && media?.mediaType === 'tv'
-  && session.media.providerId === media.providerId
-  && session.media.tmdbId === media.tmdbId
-);
+const isSameExternalSeries = (session, media) =>
+  Boolean(
+    session?.media?.mediaType === 'tv' &&
+    media?.mediaType === 'tv' &&
+    session.media.providerId === media.providerId &&
+    session.media.tmdbId === media.tmdbId,
+  );
 
-const isSameExternalMedia = (left, right) => Boolean(
-  left
-  && right
-  && left.providerId === right.providerId
-  && left.mediaType === right.mediaType
-  && left.tmdbId === right.tmdbId
-  && (left.mediaType !== 'tv' || (
-    left.season === right.season
-    && left.episode === right.episode
-  )),
-);
+const isSameExternalMedia = (left, right) =>
+  Boolean(
+    left &&
+    right &&
+    left.providerId === right.providerId &&
+    left.mediaType === right.mediaType &&
+    left.tmdbId === right.tmdbId &&
+    (left.mediaType !== 'tv' ||
+      (left.season === right.season && left.episode === right.episode)),
+  );
 
 export const WebRTCProvider = ({ children }) => {
   // Use Vercel environment variable or fallback to local network dynamic host
-  const defaultWsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = import.meta.env.VITE_WS_URL || `${defaultWsProtocol}//${window.location.hostname}:9080`;
+  const defaultWsProtocol =
+    window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl =
+    import.meta.env.VITE_WS_URL ||
+    `${defaultWsProtocol}//${window.location.hostname}:9080`;
   const { status, ws, reconnectAttempt } = useSignaling(wsUrl);
 
   const pcRef = useRef(null);
@@ -109,8 +122,9 @@ export const WebRTCProvider = ({ children }) => {
   const lastNotificationSoundAtRef = useRef(0);
   const clientIdRef = useRef(null);
   if (!clientIdRef.current) {
-    clientIdRef.current = globalThis.crypto?.randomUUID?.()
-      || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    clientIdRef.current =
+      globalThis.crypto?.randomUUID?.() ||
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
   const outgoingExternalWatchProposalRef = useRef(null);
   const externalWatchSessionRef = useRef(null);
@@ -127,17 +141,27 @@ export const WebRTCProvider = ({ children }) => {
   const [roomId, setRoomId] = useState(null);
   const [roomError, setRoomError] = useState(null);
   const [peerPresence, setPeerPresence] = useState('waiting');
-  const [connectionStats, setConnectionStats] = useState(EMPTY_CONNECTION_STATS);
+  const [connectionStats, setConnectionStats] = useState(
+    EMPTY_CONNECTION_STATS,
+  );
   const [movieControlRequest, setMovieControlRequest] = useState(null);
   const [externalWatchInvite, setExternalWatchInvite] = useState(null);
-  const [outgoingExternalWatchProposal, setOutgoingExternalWatchProposalState] = useState(null);
+  const [outgoingExternalWatchProposal, setOutgoingExternalWatchProposalState] =
+    useState(null);
   const [externalWatchSession, setExternalWatchSessionState] = useState(null);
   const [externalWatchCommand, setExternalWatchCommand] = useState(null);
-  const [externalWatchProposalStatus, setExternalWatchProposalStatus] = useState('idle');
-  const [participantVolume, setParticipantVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.participant);
-  const [screenVolume, setScreenVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.screen);
-  const [movieVolume, setMovieVolumeState] = useState(DEFAULT_PLAYBACK_VOLUMES.movie);
-  
+  const [externalWatchProposalStatus, setExternalWatchProposalStatus] =
+    useState('idle');
+  const [participantVolume, setParticipantVolumeState] = useState(
+    DEFAULT_PLAYBACK_VOLUMES.participant,
+  );
+  const [screenVolume, setScreenVolumeState] = useState(
+    DEFAULT_PLAYBACK_VOLUMES.screen,
+  );
+  const [movieVolume, setMovieVolumeState] = useState(
+    DEFAULT_PLAYBACK_VOLUMES.movie,
+  );
+
   const [isCameraOff, setIsCameraOff] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
   const [remoteMirrored, setRemoteMirrored] = useState(true);
@@ -148,24 +172,27 @@ export const WebRTCProvider = ({ children }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
 
-  const setOutgoingExternalWatchProposal = useCallback(value => {
+  const setOutgoingExternalWatchProposal = useCallback((value) => {
     outgoingExternalWatchProposalRef.current = value;
     setOutgoingExternalWatchProposalState(value);
   }, []);
 
-  const setExternalWatchSession = useCallback(value => {
-    const nextValue = typeof value === 'function' ? value(externalWatchSessionRef.current) : value;
+  const setExternalWatchSession = useCallback((value) => {
+    const nextValue =
+      typeof value === 'function'
+        ? value(externalWatchSessionRef.current)
+        : value;
     externalWatchSessionRef.current = nextValue;
     setExternalWatchSessionState(nextValue);
   }, []);
 
-  const setParticipantVolume = useCallback(value => {
+  const setParticipantVolume = useCallback((value) => {
     setParticipantVolumeState(normalizePlaybackVolume(value));
   }, []);
-  const setScreenVolume = useCallback(value => {
+  const setScreenVolume = useCallback((value) => {
     setScreenVolumeState(normalizePlaybackVolume(value));
   }, []);
-  const setMovieVolume = useCallback(value => {
+  const setMovieVolume = useCallback((value) => {
     setMovieVolumeState(normalizePlaybackVolume(value));
   }, []);
 
@@ -176,13 +203,18 @@ export const WebRTCProvider = ({ children }) => {
   const isCameraOffRef = useRef(isCameraOff);
   const isScreenSharingRef = useRef(false);
   const localShareSourceRef = useRef(null);
-  useEffect(() => { isCameraOffRef.current = isCameraOff; }, [isCameraOff]);
-  useEffect(() => { localShareSourceRef.current = localShareSource; }, [localShareSource]);
+  useEffect(() => {
+    isCameraOffRef.current = isCameraOff;
+  }, [isCameraOff]);
+  useEffect(() => {
+    localShareSourceRef.current = localShareSource;
+  }, [localShareSource]);
 
   const setIsScreenSharing = useCallback((nextValue) => {
-    const resolvedValue = typeof nextValue === 'function'
-      ? nextValue(isScreenSharingRef.current)
-      : nextValue;
+    const resolvedValue =
+      typeof nextValue === 'function'
+        ? nextValue(isScreenSharingRef.current)
+        : nextValue;
     isScreenSharingRef.current = resolvedValue;
     setIsScreenSharingState(resolvedValue);
   }, []);
@@ -191,37 +223,45 @@ export const WebRTCProvider = ({ children }) => {
   const [isChatOpen, setIsChatOpenState] = useState(false);
   const isChatOpenRef = useRef(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [notificationSoundEnabled, setNotificationSoundEnabledState] = useState(true);
+  const [notificationSoundEnabled, setNotificationSoundEnabledState] =
+    useState(true);
   const notificationSoundEnabledRef = useRef(true);
 
   const setIsChatOpen = useCallback((nextValue) => {
-    const resolvedValue = typeof nextValue === 'function'
-      ? nextValue(isChatOpenRef.current)
-      : nextValue;
+    const resolvedValue =
+      typeof nextValue === 'function'
+        ? nextValue(isChatOpenRef.current)
+        : nextValue;
     setIsChatOpenState(resolvedValue);
     isChatOpenRef.current = resolvedValue;
     if (resolvedValue) setUnreadCount(0);
   }, []);
 
   const setNotificationSoundEnabled = useCallback((nextValue) => {
-    const resolvedValue = typeof nextValue === 'function'
-      ? nextValue(notificationSoundEnabledRef.current)
-      : nextValue;
+    const resolvedValue =
+      typeof nextValue === 'function'
+        ? nextValue(notificationSoundEnabledRef.current)
+        : nextValue;
     notificationSoundEnabledRef.current = resolvedValue;
     setNotificationSoundEnabledState(resolvedValue);
   }, []);
 
   const playNotificationSound = () => {
     const now = Date.now();
-    if (!notificationSoundEnabledRef.current || now - lastNotificationSoundAtRef.current < 1200) {
+    if (
+      !notificationSoundEnabledRef.current ||
+      now - lastNotificationSoundAtRef.current < 1200
+    ) {
       return;
     }
 
     try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) return;
 
-      const ctx = notificationAudioContextRef.current || new AudioContextClass();
+      const ctx =
+        notificationAudioContextRef.current || new AudioContextClass();
       notificationAudioContextRef.current = ctx;
       lastNotificationSoundAtRef.current = now;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -247,21 +287,24 @@ export const WebRTCProvider = ({ children }) => {
     }
   };
 
-  useEffect(() => () => {
-    notificationAudioContextRef.current?.close().catch(() => {});
-    notificationAudioContextRef.current = null;
-  }, []);
+  useEffect(
+    () => () => {
+      notificationAudioContextRef.current?.close().catch(() => {});
+      notificationAudioContextRef.current = null;
+    },
+    [],
+  );
 
   const pendingCandidates = useRef([]);
 
   const bindTransceivers = useCallback((pc) => {
     const transceivers = pc.getTransceivers();
     const videoTransceivers = transceivers.filter(
-      transceiver => transceiver.receiver.track.kind === 'video',
+      (transceiver) => transceiver.receiver.track.kind === 'video',
     );
 
     const audioTransceivers = transceivers.filter(
-      transceiver => transceiver.receiver.track.kind === 'audio',
+      (transceiver) => transceiver.receiver.track.kind === 'audio',
     );
 
     audioTransceiverRef.current = audioTransceivers[0] || null;
@@ -270,153 +313,258 @@ export const WebRTCProvider = ({ children }) => {
     screenTransceiverRef.current = videoTransceivers[1] || null;
   }, []);
 
-  const resetRemotePeer = useCallback((reason = 'terminal') => {
-    const preserveExternalWatch = shouldPreserveExternalWatchSession(
-      reason,
-      externalWatchSessionRef.current,
-    );
-    if (disconnectRecoveryTimerRef.current) {
-      window.clearTimeout(disconnectRecoveryTimerRef.current);
-      disconnectRecoveryTimerRef.current = null;
-    }
-    iceRestartInFlightRef.current = false;
-    if (dataChannelRef.current) {
-      dataChannelRef.current.close();
-      dataChannelRef.current = null;
-    }
-    if (pcRef.current) {
-      const pc = pcRef.current;
-      pcRef.current = null;
-      pc.close();
-    }
-    pendingCandidates.current = [];
-    audioTransceiverRef.current = null;
-    audioPlaceholderTrackRef.current?.stop();
-    audioPlaceholderTrackRef.current = null;
-    contentAudioTransceiverRef.current = null;
-    cameraTransceiverRef.current = null;
-    screenTransceiverRef.current = null;
-    screenPlaceholderTrackRef.current?.stop();
-    screenPlaceholderTrackRef.current = null;
-    contentAudioPlaceholderTrackRef.current?.stop();
-    contentAudioPlaceholderTrackRef.current = null;
-    contentAssociationStreamRef.current = null;
-    previousStatsRef.current = new Map();
-    setConnectionStats(EMPTY_CONNECTION_STATS);
-    setRemoteStream(null);
-    setRemoteScreenStream(null);
-    setRemoteScreenSharing(false);
-    setRemoteShareSource(null);
-    setRemoteCameraOff(true);
-    setConnected(false);
-    setExternalWatchInvite(null);
-    setOutgoingExternalWatchProposal(null);
-    setExternalWatchCommand(null);
-    if (preserveExternalWatch) {
-      setExternalWatchProposalStatus('accepted');
-      console.info('[WebRTC] Rebuilding peer transport while preserving the active watch session.');
-    } else {
-      setExternalWatchSession(null);
-      setExternalWatchProposalStatus('idle');
-      externalWatchRevisionRef.current = 0;
-    }
-  }, [setExternalWatchSession, setOutgoingExternalWatchProposal]);
+  const resetRemotePeer = useCallback(
+    (reason = 'terminal') => {
+      const preserveExternalWatch = shouldPreserveExternalWatchSession(
+        reason,
+        externalWatchSessionRef.current,
+      );
+      if (disconnectRecoveryTimerRef.current) {
+        window.clearTimeout(disconnectRecoveryTimerRef.current);
+        disconnectRecoveryTimerRef.current = null;
+      }
+      iceRestartInFlightRef.current = false;
+      if (dataChannelRef.current) {
+        dataChannelRef.current.close();
+        dataChannelRef.current = null;
+      }
+      if (pcRef.current) {
+        const pc = pcRef.current;
+        pcRef.current = null;
+        pc.close();
+      }
+      pendingCandidates.current = [];
+      audioTransceiverRef.current = null;
+      audioPlaceholderTrackRef.current?.stop();
+      audioPlaceholderTrackRef.current = null;
+      contentAudioTransceiverRef.current = null;
+      cameraTransceiverRef.current = null;
+      screenTransceiverRef.current = null;
+      screenPlaceholderTrackRef.current?.stop();
+      screenPlaceholderTrackRef.current = null;
+      contentAudioPlaceholderTrackRef.current?.stop();
+      contentAudioPlaceholderTrackRef.current = null;
+      contentAssociationStreamRef.current = null;
+      previousStatsRef.current = new Map();
+      setConnectionStats(EMPTY_CONNECTION_STATS);
+      setRemoteStream(null);
+      setRemoteScreenStream(null);
+      setRemoteScreenSharing(false);
+      setRemoteShareSource(null);
+      setRemoteCameraOff(true);
+      setConnected(false);
+      setExternalWatchInvite(null);
+      setOutgoingExternalWatchProposal(null);
+      setExternalWatchCommand(null);
+      if (preserveExternalWatch) {
+        setExternalWatchProposalStatus('accepted');
+        console.info(
+          '[WebRTC] Rebuilding peer transport while preserving the active watch session.',
+        );
+      } else {
+        setExternalWatchSession(null);
+        setExternalWatchProposalStatus('idle');
+        externalWatchRevisionRef.current = 0;
+      }
+    },
+    [setExternalWatchSession, setOutgoingExternalWatchProposal],
+  );
 
-  const handleDataMessage = event => {
+  const handleDataMessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.type === 'mirror-toggle' && typeof data.isMirrored === 'boolean') {
+      if (
+        data.type === 'mirror-toggle' &&
+        typeof data.isMirrored === 'boolean'
+      ) {
         setRemoteMirrored(data.isMirrored);
         return;
       }
-      if (data.type === 'camera-toggle' && typeof data.isCameraOff === 'boolean') {
+      if (
+        data.type === 'camera-toggle' &&
+        typeof data.isCameraOff === 'boolean'
+      ) {
         setRemoteCameraOff(data.isCameraOff);
         return;
       }
-      if (data.type === 'screen-toggle' && typeof data.isScreenSharing === 'boolean') {
+      if (
+        data.type === 'screen-toggle' &&
+        typeof data.isScreenSharing === 'boolean'
+      ) {
         setRemoteScreenSharing(data.isScreenSharing);
-        setRemoteShareSource(data.isScreenSharing
-          ? {
-              kind: data.source === 'movie' ? 'movie' : 'screen',
-              name: typeof data.name === 'string' ? data.name.slice(0, 160) : null,
-              duration: Number.isFinite(data.duration) ? data.duration : null,
-              deliveryMode: data.deliveryMode === 'direct' ? 'direct' : 'relay',
-              url: data.deliveryMode === 'direct' ? sanitizeSharedDirectMediaUrl(data.url) : null,
-              width: Number.isFinite(data.width) && data.width > 0 ? data.width : null,
-              height: Number.isFinite(data.height) && data.height > 0 ? data.height : null,
-              aspectRatio: Number.isFinite(data.aspectRatio) && data.aspectRatio > 0
-                ? data.aspectRatio
-                : null,
-              isPlaying: data.isPlaying !== false,
-              currentTime: Number.isFinite(data.currentTime) ? data.currentTime : 0,
-              subtitleText: typeof data.subtitleText === 'string' ? data.subtitleText.slice(0, 1000) : '',
-              subtitlesAvailable: Boolean(data.subtitlesAvailable),
-              subtitlesEnabled: data.subtitlesEnabled !== false,
-              subtitleTracks: Array.isArray(data.subtitleTracks)
-                ? data.subtitleTracks.slice(0, 16).map((track, index) => ({
-                    index: Number.isInteger(track?.index) ? track.index : index,
-                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Subtitles ${index + 1}`,
-                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
-                  }))
-                : [],
-              selectedSubtitleTrack: Number.isInteger(data.selectedSubtitleTrack) ? data.selectedSubtitleTrack : null,
-              audioTracks: Array.isArray(data.audioTracks)
-                ? data.audioTracks.slice(0, 16).map((track, index) => ({
-                    index: Number.isInteger(track?.index) ? track.index : index,
-                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Audio ${index + 1}`,
-                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
-                  }))
-                : [],
-              selectedAudioTrack: Number.isInteger(data.selectedAudioTrack) ? data.selectedAudioTrack : 0,
-            }
-          : null);
+        setRemoteShareSource(
+          data.isScreenSharing
+            ? {
+                kind: data.source === 'movie' ? 'movie' : 'screen',
+                name:
+                  typeof data.name === 'string'
+                    ? data.name.slice(0, 160)
+                    : null,
+                duration: Number.isFinite(data.duration) ? data.duration : null,
+                deliveryMode:
+                  data.deliveryMode === 'direct' ? 'direct' : 'relay',
+                url:
+                  data.deliveryMode === 'direct'
+                    ? sanitizeSharedDirectMediaUrl(data.url)
+                    : null,
+                width:
+                  Number.isFinite(data.width) && data.width > 0
+                    ? data.width
+                    : null,
+                height:
+                  Number.isFinite(data.height) && data.height > 0
+                    ? data.height
+                    : null,
+                aspectRatio:
+                  Number.isFinite(data.aspectRatio) && data.aspectRatio > 0
+                    ? data.aspectRatio
+                    : null,
+                isPlaying: data.isPlaying !== false,
+                currentTime: Number.isFinite(data.currentTime)
+                  ? data.currentTime
+                  : 0,
+                subtitleText:
+                  typeof data.subtitleText === 'string'
+                    ? data.subtitleText.slice(0, 1000)
+                    : '',
+                subtitlesAvailable: Boolean(data.subtitlesAvailable),
+                subtitlesEnabled: data.subtitlesEnabled !== false,
+                subtitleTracks: Array.isArray(data.subtitleTracks)
+                  ? data.subtitleTracks.slice(0, 16).map((track, index) => ({
+                      index: Number.isInteger(track?.index)
+                        ? track.index
+                        : index,
+                      label:
+                        typeof track?.label === 'string'
+                          ? track.label.slice(0, 80)
+                          : `Subtitles ${index + 1}`,
+                      language:
+                        typeof track?.language === 'string'
+                          ? track.language.slice(0, 20)
+                          : null,
+                    }))
+                  : [],
+                selectedSubtitleTrack: Number.isInteger(
+                  data.selectedSubtitleTrack,
+                )
+                  ? data.selectedSubtitleTrack
+                  : null,
+                audioTracks: Array.isArray(data.audioTracks)
+                  ? data.audioTracks.slice(0, 16).map((track, index) => ({
+                      index: Number.isInteger(track?.index)
+                        ? track.index
+                        : index,
+                      label:
+                        typeof track?.label === 'string'
+                          ? track.label.slice(0, 80)
+                          : `Audio ${index + 1}`,
+                      language:
+                        typeof track?.language === 'string'
+                          ? track.language.slice(0, 20)
+                          : null,
+                    }))
+                  : [],
+                selectedAudioTrack: Number.isInteger(data.selectedAudioTrack)
+                  ? data.selectedAudioTrack
+                  : 0,
+              }
+            : null,
+        );
         return;
       }
       if (data.type === 'movie-state') {
-        setRemoteShareSource(current => current?.kind === 'movie'
-          ? {
-              ...current,
-              isPlaying: typeof data.isPlaying === 'boolean' ? data.isPlaying : current.isPlaying,
-              currentTime: Number.isFinite(data.currentTime) ? data.currentTime : current.currentTime,
-              duration: Number.isFinite(data.duration) ? data.duration : current.duration,
-              subtitleText: typeof data.subtitleText === 'string' ? data.subtitleText.slice(0, 1000) : current.subtitleText,
-              subtitlesAvailable: typeof data.subtitlesAvailable === 'boolean' ? data.subtitlesAvailable : current.subtitlesAvailable,
-              subtitlesEnabled: typeof data.subtitlesEnabled === 'boolean' ? data.subtitlesEnabled : current.subtitlesEnabled,
-              subtitleTracks: Array.isArray(data.subtitleTracks)
-                ? data.subtitleTracks.slice(0, 16).map((track, index) => ({
-                    index: Number.isInteger(track?.index) ? track.index : index,
-                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Subtitles ${index + 1}`,
-                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
-                  }))
-                : current.subtitleTracks,
-              selectedSubtitleTrack: Number.isInteger(data.selectedSubtitleTrack)
-                ? data.selectedSubtitleTrack
-                : current.selectedSubtitleTrack,
-              audioTracks: Array.isArray(data.audioTracks)
-                ? data.audioTracks.slice(0, 16).map((track, index) => ({
-                    index: Number.isInteger(track?.index) ? track.index : index,
-                    label: typeof track?.label === 'string' ? track.label.slice(0, 80) : `Audio ${index + 1}`,
-                    language: typeof track?.language === 'string' ? track.language.slice(0, 20) : null,
-                  }))
-                : current.audioTracks,
-              selectedAudioTrack: Number.isInteger(data.selectedAudioTrack)
-                ? data.selectedAudioTrack
-                : current.selectedAudioTrack,
-            }
-          : current);
+        setRemoteShareSource((current) =>
+          current?.kind === 'movie'
+            ? {
+                ...current,
+                isPlaying:
+                  typeof data.isPlaying === 'boolean'
+                    ? data.isPlaying
+                    : current.isPlaying,
+                currentTime: Number.isFinite(data.currentTime)
+                  ? data.currentTime
+                  : current.currentTime,
+                duration: Number.isFinite(data.duration)
+                  ? data.duration
+                  : current.duration,
+                subtitleText:
+                  typeof data.subtitleText === 'string'
+                    ? data.subtitleText.slice(0, 1000)
+                    : current.subtitleText,
+                subtitlesAvailable:
+                  typeof data.subtitlesAvailable === 'boolean'
+                    ? data.subtitlesAvailable
+                    : current.subtitlesAvailable,
+                subtitlesEnabled:
+                  typeof data.subtitlesEnabled === 'boolean'
+                    ? data.subtitlesEnabled
+                    : current.subtitlesEnabled,
+                subtitleTracks: Array.isArray(data.subtitleTracks)
+                  ? data.subtitleTracks.slice(0, 16).map((track, index) => ({
+                      index: Number.isInteger(track?.index)
+                        ? track.index
+                        : index,
+                      label:
+                        typeof track?.label === 'string'
+                          ? track.label.slice(0, 80)
+                          : `Subtitles ${index + 1}`,
+                      language:
+                        typeof track?.language === 'string'
+                          ? track.language.slice(0, 20)
+                          : null,
+                    }))
+                  : current.subtitleTracks,
+                selectedSubtitleTrack: Number.isInteger(
+                  data.selectedSubtitleTrack,
+                )
+                  ? data.selectedSubtitleTrack
+                  : current.selectedSubtitleTrack,
+                audioTracks: Array.isArray(data.audioTracks)
+                  ? data.audioTracks.slice(0, 16).map((track, index) => ({
+                      index: Number.isInteger(track?.index)
+                        ? track.index
+                        : index,
+                      label:
+                        typeof track?.label === 'string'
+                          ? track.label.slice(0, 80)
+                          : `Audio ${index + 1}`,
+                      language:
+                        typeof track?.language === 'string'
+                          ? track.language.slice(0, 20)
+                          : null,
+                    }))
+                  : current.audioTracks,
+                selectedAudioTrack: Number.isInteger(data.selectedAudioTrack)
+                  ? data.selectedAudioTrack
+                  : current.selectedAudioTrack,
+              }
+            : current,
+        );
         return;
       }
       if (
-        data.type === 'movie-control-request'
-        && ['play', 'pause', 'seek', 'audio-track', 'subtitle-track', 'subtitles'].includes(data.action)
+        data.type === 'movie-control-request' &&
+        [
+          'play',
+          'pause',
+          'seek',
+          'audio-track',
+          'subtitle-track',
+          'subtitles',
+        ].includes(data.action)
       ) {
         setMovieControlRequest({
           id: `${Date.now()}-${messageSequenceRef.current++}`,
           action: data.action,
-          currentTime: Number.isFinite(data.currentTime) ? Math.max(0, data.currentTime) : null,
-          trackIndex: Number.isInteger(data.trackIndex) ? data.trackIndex : null,
+          currentTime: Number.isFinite(data.currentTime)
+            ? Math.max(0, data.currentTime)
+            : null,
+          trackIndex: Number.isInteger(data.trackIndex)
+            ? data.trackIndex
+            : null,
           enabled: typeof data.enabled === 'boolean' ? data.enabled : null,
-          resumeAfterSeek: data.action === 'seek' && data.resumeAfterSeek === true,
+          resumeAfterSeek:
+            data.action === 'seek' && data.resumeAfterSeek === true,
         });
         return;
       }
@@ -425,18 +573,24 @@ export const WebRTCProvider = ({ children }) => {
         if (!proposal || externalWatchSessionRef.current) return;
         const pendingProposal = outgoingExternalWatchProposalRef.current;
         if (pendingProposal) {
-          if (pendingProposal.proposalId.localeCompare(proposal.proposalId) <= 0) {
-            dataChannelRef.current?.send(JSON.stringify({
-              type: 'external-watch-response',
-              proposalId: proposal.proposalId,
-              accepted: false,
-            }));
+          if (
+            pendingProposal.proposalId.localeCompare(proposal.proposalId) <= 0
+          ) {
+            dataChannelRef.current?.send(
+              JSON.stringify({
+                type: 'external-watch-response',
+                proposalId: proposal.proposalId,
+                accepted: false,
+              }),
+            );
             return;
           }
-          dataChannelRef.current?.send(JSON.stringify({
-            type: 'external-watch-stop',
-            proposalId: pendingProposal.proposalId,
-          }));
+          dataChannelRef.current?.send(
+            JSON.stringify({
+              type: 'external-watch-stop',
+              proposalId: pendingProposal.proposalId,
+            }),
+          );
           setOutgoingExternalWatchProposal(null);
           setExternalWatchProposalStatus('idle');
         }
@@ -446,7 +600,8 @@ export const WebRTCProvider = ({ children }) => {
       if (data.type === 'external-watch-response') {
         const response = normalizeExternalWatchResponse(data);
         const pendingProposal = outgoingExternalWatchProposalRef.current;
-        if (!response || response.proposalId !== pendingProposal?.proposalId) return;
+        if (!response || response.proposalId !== pendingProposal?.proposalId)
+          return;
         if (response.accepted) {
           externalWatchRevisionRef.current = 0;
           setExternalWatchSession({
@@ -467,11 +622,12 @@ export const WebRTCProvider = ({ children }) => {
         const request = normalizeExternalWatchEpisodeRequest(data);
         const session = externalWatchSessionRef.current;
         if (
-          !request
-          || session?.authority !== 'local'
-          || request.proposalId !== session.proposalId
-          || !isSameExternalSeries(session, request.media)
-        ) return;
+          !request ||
+          session?.authority !== 'local' ||
+          request.proposalId !== session.proposalId ||
+          !isSameExternalSeries(session, request.media)
+        )
+          return;
         const state = normalizeExternalWatchMediaState({
           type: 'external-watch-media-state',
           proposalId: session.proposalId,
@@ -481,7 +637,13 @@ export const WebRTCProvider = ({ children }) => {
         if (!state) return;
         externalWatchRevisionRef.current = 0;
         setExternalWatchCommand(null);
-        setExternalWatchSession({ ...session, media: state.media, mediaRevision: state.revision, mediaChangedAt: Date.now(), playback: null });
+        setExternalWatchSession({
+          ...session,
+          media: state.media,
+          mediaRevision: state.revision,
+          mediaChangedAt: Date.now(),
+          playback: null,
+        });
         dataChannelRef.current?.send(JSON.stringify(state));
         return;
       }
@@ -489,26 +651,34 @@ export const WebRTCProvider = ({ children }) => {
         const state = normalizeExternalWatchMediaState(data);
         const session = externalWatchSessionRef.current;
         if (
-          !state
-          || session?.authority !== 'remote'
-          || state.proposalId !== session.proposalId
-          || state.revision <= (session.mediaRevision || 0)
-          || !isSameExternalSeries(session, state.media)
-        ) return;
+          !state ||
+          session?.authority !== 'remote' ||
+          state.proposalId !== session.proposalId ||
+          state.revision <= (session.mediaRevision || 0) ||
+          !isSameExternalSeries(session, state.media)
+        )
+          return;
         externalWatchRevisionRef.current = 0;
         setExternalWatchCommand(null);
-        setExternalWatchSession({ ...session, media: state.media, mediaRevision: state.revision, mediaChangedAt: Date.now(), playback: null });
+        setExternalWatchSession({
+          ...session,
+          media: state.media,
+          mediaRevision: state.revision,
+          mediaChangedAt: Date.now(),
+          playback: null,
+        });
         return;
       }
       if (data.type === 'external-watch-command') {
         const command = normalizeExternalWatchCommand(data);
         const session = externalWatchSessionRef.current;
         if (
-          !command
-          || session?.authority !== 'local'
-          || command.proposalId !== session.proposalId
-          || command.mediaRevision !== (session.mediaRevision || 0)
-        ) return;
+          !command ||
+          session?.authority !== 'local' ||
+          command.proposalId !== session.proposalId ||
+          command.mediaRevision !== (session.mediaRevision || 0)
+        )
+          return;
         setExternalWatchCommand(command);
         return;
       }
@@ -516,12 +686,13 @@ export const WebRTCProvider = ({ children }) => {
         const state = normalizeExternalWatchState(data);
         const session = externalWatchSessionRef.current;
         if (
-          !state
-          || session?.authority !== 'remote'
-          || state.proposalId !== session.proposalId
-          || state.mediaRevision !== (session.mediaRevision || 0)
-          || !isNewerExternalWatchState(session.playback, state)
-        ) return;
+          !state ||
+          session?.authority !== 'remote' ||
+          state.proposalId !== session.proposalId ||
+          state.mediaRevision !== (session.mediaRevision || 0) ||
+          !isNewerExternalWatchState(session.playback, state)
+        )
+          return;
         setExternalWatchSession({ ...session, playback: state });
         return;
       }
@@ -530,16 +701,21 @@ export const WebRTCProvider = ({ children }) => {
         const session = externalWatchSessionRef.current;
         const remoteShouldBeAuthority = session?.authority === 'remote';
         if (
-          !recovery
-          || !session
-          || recovery.proposalId !== session.proposalId
-          || recovery.isAuthority !== remoteShouldBeAuthority
-          || recovery.mediaRevision < (session.mediaRevision || 0)
-        ) return;
+          !recovery ||
+          !session ||
+          recovery.proposalId !== session.proposalId ||
+          recovery.isAuthority !== remoteShouldBeAuthority ||
+          recovery.mediaRevision < (session.mediaRevision || 0)
+        )
+          return;
 
         let nextSession = session;
         if (recovery.mediaRevision > (session.mediaRevision || 0)) {
-          if (!remoteShouldBeAuthority || !isSameExternalSeries(session, recovery.media)) return;
+          if (
+            !remoteShouldBeAuthority ||
+            !isSameExternalSeries(session, recovery.media)
+          )
+            return;
           externalWatchRevisionRef.current = 0;
           nextSession = {
             ...session,
@@ -553,9 +729,9 @@ export const WebRTCProvider = ({ children }) => {
         }
 
         if (
-          remoteShouldBeAuthority
-          && recovery.playback
-          && isNewerExternalWatchState(nextSession.playback, recovery.playback)
+          remoteShouldBeAuthority &&
+          recovery.playback &&
+          isNewerExternalWatchState(nextSession.playback, recovery.playback)
         ) {
           nextSession = { ...nextSession, playback: recovery.playback };
         }
@@ -574,20 +750,23 @@ export const WebRTCProvider = ({ children }) => {
           setOutgoingExternalWatchProposal(null);
           setExternalWatchProposalStatus('cancelled');
         }
-        setExternalWatchInvite(current => (
-          current?.proposalId === data.proposalId ? null : current
-        ));
+        setExternalWatchInvite((current) =>
+          current?.proposalId === data.proposalId ? null : current,
+        );
         return;
       }
       if (data.type === 'chat') {
         const message = normalizeChatMessagePayload(data, 'remote');
         if (!message) return;
-        const nextMessages = appendUniqueChatMessage(chatMessagesRef.current, message);
+        const nextMessages = appendUniqueChatMessage(
+          chatMessagesRef.current,
+          message,
+        );
         if (nextMessages === chatMessagesRef.current) return;
         chatMessagesRef.current = nextMessages;
         setChatMessages(nextMessages);
         if (!isChatOpenRef.current) {
-          setUnreadCount(previous => previous + 1);
+          setUnreadCount((previous) => previous + 1);
           playNotificationSound();
         }
         return;
@@ -595,7 +774,11 @@ export const WebRTCProvider = ({ children }) => {
       if (data.type === 'chat-reaction') {
         const reaction = normalizeChatReactionPayload(data);
         if (!reaction) return;
-        const nextMessages = applyChatReaction(chatMessagesRef.current, reaction, 'remote');
+        const nextMessages = applyChatReaction(
+          chatMessagesRef.current,
+          reaction,
+          'remote',
+        );
         if (nextMessages === chatMessagesRef.current) return;
         chatMessagesRef.current = nextMessages;
         setChatMessages(nextMessages);
@@ -606,33 +789,46 @@ export const WebRTCProvider = ({ children }) => {
     }
   };
 
-  const configureDataChannel = channel => {
+  const configureDataChannel = (channel) => {
     const sendInitialState = () => {
       if (channel.readyState !== 'open') return;
-      channel.send(JSON.stringify({ type: 'camera-toggle', isCameraOff: isCameraOffRef.current }));
-      channel.send(JSON.stringify({
-        type: 'screen-toggle',
-        isScreenSharing: isScreenSharingRef.current,
-        source: localShareSourceRef.current?.kind || 'screen',
-        name: localShareSourceRef.current?.name || null,
-        duration: localShareSourceRef.current?.duration || null,
-        deliveryMode: localShareSourceRef.current?.deliveryMode || 'relay',
-        url: localShareSourceRef.current?.deliveryMode === 'direct'
-          ? localShareSourceRef.current?.url || null
-          : null,
-        width: localShareSourceRef.current?.width || null,
-        height: localShareSourceRef.current?.height || null,
-        aspectRatio: localShareSourceRef.current?.aspectRatio || null,
-        isPlaying: localShareSourceRef.current?.isPlaying !== false,
-        currentTime: localShareSourceRef.current?.currentTime || 0,
-        subtitleText: localShareSourceRef.current?.subtitleText || '',
-        subtitlesAvailable: Boolean(localShareSourceRef.current?.subtitlesAvailable),
-        subtitlesEnabled: localShareSourceRef.current?.subtitlesEnabled !== false,
-        subtitleTracks: localShareSourceRef.current?.subtitleTracks || [],
-        selectedSubtitleTrack: localShareSourceRef.current?.selectedSubtitleTrack ?? null,
-        audioTracks: localShareSourceRef.current?.audioTracks || [],
-        selectedAudioTrack: localShareSourceRef.current?.selectedAudioTrack || 0,
-      }));
+      channel.send(
+        JSON.stringify({
+          type: 'camera-toggle',
+          isCameraOff: isCameraOffRef.current,
+        }),
+      );
+      channel.send(
+        JSON.stringify({
+          type: 'screen-toggle',
+          isScreenSharing: isScreenSharingRef.current,
+          source: localShareSourceRef.current?.kind || 'screen',
+          name: localShareSourceRef.current?.name || null,
+          duration: localShareSourceRef.current?.duration || null,
+          deliveryMode: localShareSourceRef.current?.deliveryMode || 'relay',
+          url:
+            localShareSourceRef.current?.deliveryMode === 'direct'
+              ? localShareSourceRef.current?.url || null
+              : null,
+          width: localShareSourceRef.current?.width || null,
+          height: localShareSourceRef.current?.height || null,
+          aspectRatio: localShareSourceRef.current?.aspectRatio || null,
+          isPlaying: localShareSourceRef.current?.isPlaying !== false,
+          currentTime: localShareSourceRef.current?.currentTime || 0,
+          subtitleText: localShareSourceRef.current?.subtitleText || '',
+          subtitlesAvailable: Boolean(
+            localShareSourceRef.current?.subtitlesAvailable,
+          ),
+          subtitlesEnabled:
+            localShareSourceRef.current?.subtitlesEnabled !== false,
+          subtitleTracks: localShareSourceRef.current?.subtitleTracks || [],
+          selectedSubtitleTrack:
+            localShareSourceRef.current?.selectedSubtitleTrack ?? null,
+          audioTracks: localShareSourceRef.current?.audioTracks || [],
+          selectedAudioTrack:
+            localShareSourceRef.current?.selectedAudioTrack || 0,
+        }),
+      );
       const watchSession = externalWatchSessionRef.current;
       if (watchSession) {
         const recovery = normalizeExternalWatchRecovery({
@@ -664,7 +860,7 @@ export const WebRTCProvider = ({ children }) => {
       } catch {
         return;
       }
-      console.log("[Signaling] Received message:", msg.type);
+      console.log('[Signaling] Received message:', msg.type);
 
       if (msg.type === 'room-joined') {
         setRoomError(null);
@@ -693,7 +889,8 @@ export const WebRTCProvider = ({ children }) => {
         setPeerPresence('left');
       } else if (msg.type === 'peer-reconnecting') {
         // The signaling socket can reconnect while the direct media path remains healthy.
-        if (pcRef.current?.connectionState !== 'connected') setPeerPresence('reconnecting');
+        if (pcRef.current?.connectionState !== 'connected')
+          setPeerPresence('reconnecting');
       } else if (msg.type === 'peer-reconnected') {
         if (pcRef.current?.connectionState === 'connected') {
           setConnected(true);
@@ -704,12 +901,15 @@ export const WebRTCProvider = ({ children }) => {
           try {
             await startCallRef.current?.();
           } catch (error) {
-            console.error('[WebRTC] Failed to renegotiate after peer reconnect:', error);
+            console.error(
+              '[WebRTC] Failed to renegotiate after peer reconnect:',
+              error,
+            );
             setPeerPresence('reconnecting');
           }
         }
       } else if (msg.type === 'peer-joined') {
-        console.log("[Signaling] Peer joined. Initiating call...");
+        console.log('[Signaling] Peer joined. Initiating call...');
         resetRemotePeer('peer-joined-with-active-session');
         setPeerPresence('joining');
         try {
@@ -723,59 +923,80 @@ export const WebRTCProvider = ({ children }) => {
       } else if (msg.type === 'offer') {
         try {
           const canReuseConnection = Boolean(
-            msg.iceRestart
-            && pcRef.current
-            && pcRef.current.signalingState !== 'closed',
+            msg.iceRestart &&
+            pcRef.current &&
+            pcRef.current.signalingState !== 'closed',
           );
-          if (pcRef.current && !canReuseConnection) resetRemotePeer('renegotiation-offer');
+          if (pcRef.current && !canReuseConnection)
+            resetRemotePeer('renegotiation-offer');
           setPeerPresence('joining');
           if (!canReuseConnection) initPeerConnectionRef.current?.(false);
           const pc = pcRef.current;
           if (!pc) return;
           isCallerRef.current = false;
-          await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.type, sdp: msg.sdp }));
+          await pc.setRemoteDescription(
+            new RTCSessionDescription({ type: msg.type, sdp: msg.sdp }),
+          );
           if (pcRef.current !== pc) return;
           bindTransceivers(pc);
 
           for (const candidate of pendingCandidates.current) {
             if (pcRef.current !== pc) return;
-            try { await pc.addIceCandidate(candidate); } catch (e) { console.error('ICE error', e); }
+            try {
+              await pc.addIceCandidate(candidate);
+            } catch (e) {
+              console.error('ICE error', e);
+            }
           }
           pendingCandidates.current = [];
 
           // Force incoming transceivers to sendrecv and attach local tracks!
           // This guarantees the Joiner negotiates sending tracks, firing ontrack on the Creator.
-          const audioTrack = outgoingAudioTrackRef.current?.readyState === 'live'
-            ? outgoingAudioTrackRef.current
-            : localStreamRef.current?.getAudioTracks()[0];
+          const audioTrack =
+            outgoingAudioTrackRef.current?.readyState === 'live'
+              ? outgoingAudioTrackRef.current
+              : localStreamRef.current?.getAudioTracks()[0];
           const videoTrack = localStreamRef.current?.getVideoTracks()[0];
           const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
-          const contentAudioTrack = localContentAudioTrackRef.current?.readyState === 'live'
-            ? localContentAudioTrackRef.current
-            : null;
-          
+          const contentAudioTrack =
+            localContentAudioTrackRef.current?.readyState === 'live'
+              ? localContentAudioTrackRef.current
+              : null;
+
           if (audioTransceiverRef.current) {
             audioTransceiverRef.current.direction = 'sendrecv';
-            if (audioTrack) await audioTransceiverRef.current.sender.replaceTrack(audioTrack);
+            if (audioTrack)
+              await audioTransceiverRef.current.sender.replaceTrack(audioTrack);
           }
           if (cameraTransceiverRef.current) {
             cameraTransceiverRef.current.direction = 'sendrecv';
-            if (videoTrack) await cameraTransceiverRef.current.sender.replaceTrack(videoTrack);
+            if (videoTrack)
+              await cameraTransceiverRef.current.sender.replaceTrack(
+                videoTrack,
+              );
           }
           if (screenTransceiverRef.current) {
             screenTransceiverRef.current.direction = 'sendrecv';
             const outgoingScreenTrack = screenTrack || createEmptyVideoTrack();
             if (outgoingScreenTrack) {
-              await screenTransceiverRef.current.sender.replaceTrack(outgoingScreenTrack);
-              if (!screenTrack) screenPlaceholderTrackRef.current = outgoingScreenTrack;
+              await screenTransceiverRef.current.sender.replaceTrack(
+                outgoingScreenTrack,
+              );
+              if (!screenTrack)
+                screenPlaceholderTrackRef.current = outgoingScreenTrack;
             }
           }
           if (contentAudioTransceiverRef.current) {
             contentAudioTransceiverRef.current.direction = 'sendrecv';
-            const outgoingContentAudioTrack = contentAudioTrack || createEmptyAudioTrack();
+            const outgoingContentAudioTrack =
+              contentAudioTrack || createEmptyAudioTrack();
             if (outgoingContentAudioTrack) {
-              await contentAudioTransceiverRef.current.sender.replaceTrack(outgoingContentAudioTrack);
-              if (!contentAudioTrack) contentAudioPlaceholderTrackRef.current = outgoingContentAudioTrack;
+              await contentAudioTransceiverRef.current.sender.replaceTrack(
+                outgoingContentAudioTrack,
+              );
+              if (!contentAudioTrack)
+                contentAudioPlaceholderTrackRef.current =
+                  outgoingContentAudioTrack;
             }
           }
 
@@ -784,52 +1005,72 @@ export const WebRTCProvider = ({ children }) => {
             contentAudioTransceiverRef.current?.sender.track,
           ].filter(Boolean);
           if (contentTracks.length) {
-            contentAssociationStreamRef.current = new MediaStream(contentTracks);
+            contentAssociationStreamRef.current = new MediaStream(
+              contentTracks,
+            );
             try {
-              screenTransceiverRef.current?.sender.setStreams?.(contentAssociationStreamRef.current);
-              contentAudioTransceiverRef.current?.sender.setStreams?.(contentAssociationStreamRef.current);
+              screenTransceiverRef.current?.sender.setStreams?.(
+                contentAssociationStreamRef.current,
+              );
+              contentAudioTransceiverRef.current?.sender.setStreams?.(
+                contentAssociationStreamRef.current,
+              );
             } catch (error) {
-              console.warn('[WebRTC] Browser could not associate shared-content tracks:', error);
+              console.warn(
+                '[WebRTC] Browser could not associate shared-content tracks:',
+                error,
+              );
             }
           }
 
           if (pcRef.current !== pc) return;
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          console.log("[Signaling] Sending answer");
+          console.log('[Signaling] Sending answer');
           if (pcRef.current === pc && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(pc.localDescription));
           }
         } catch (err) {
-          console.error("[WebRTC] Error handling offer:", err);
+          console.error('[WebRTC] Error handling offer:', err);
         }
       } else if (msg.type === 'answer') {
         const pc = pcRef.current;
         if (!pc) return;
         try {
-          console.log("[Signaling] Received answer");
-          await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.type, sdp: msg.sdp }));
+          console.log('[Signaling] Received answer');
+          await pc.setRemoteDescription(
+            new RTCSessionDescription({ type: msg.type, sdp: msg.sdp }),
+          );
           if (pcRef.current !== pc) return;
           for (const candidate of pendingCandidates.current) {
-            try { await pc.addIceCandidate(candidate); } catch (error) { console.warn('ICE error', error); }
+            try {
+              await pc.addIceCandidate(candidate);
+            } catch (error) {
+              console.warn('ICE error', error);
+            }
           }
           pendingCandidates.current = [];
           iceRestartInFlightRef.current = false;
         } catch (error) {
-          if (pcRef.current === pc) console.error('[WebRTC] Error handling answer:', error);
+          if (pcRef.current === pc)
+            console.error('[WebRTC] Error handling answer:', error);
         }
       } else if (msg.type === 'candidate') {
         try {
           const candidate = new RTCIceCandidate(msg.candidate);
-          if (pcRef.current && pcRef.current.remoteDescription && pcRef.current.remoteDescription.type) {
+          if (
+            pcRef.current &&
+            pcRef.current.remoteDescription &&
+            pcRef.current.remoteDescription.type
+          ) {
             await pcRef.current.addIceCandidate(candidate);
-            console.log("[WebRTC] Added ICE candidate");
+            console.log('[WebRTC] Added ICE candidate');
           } else {
             pendingCandidates.current.push(candidate);
-            console.log("[WebRTC] Queued ICE candidate");
+            console.log('[WebRTC] Queued ICE candidate');
           }
         } catch (err) {
-          console.error("[WebRTC] Error handling candidate:", err);
+          console.error('[WebRTC] Error handling candidate:', err);
         }
       }
     };
@@ -840,12 +1081,20 @@ export const WebRTCProvider = ({ children }) => {
   }, [status, ws, bindTransceivers, resetRemotePeer, setIsChatOpen]);
 
   useEffect(() => {
-    if (!roomId || status !== 'connected' || !ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({
-      type: 'join-room',
-      roomId,
-      clientId: clientIdRef.current,
-    }));
+    if (
+      !roomId ||
+      status !== 'connected' ||
+      !ws ||
+      ws.readyState !== WebSocket.OPEN
+    )
+      return;
+    ws.send(
+      JSON.stringify({
+        type: 'join-room',
+        roomId,
+        clientId: clientIdRef.current,
+      }),
+    );
   }, [roomId, status, ws]);
 
   const initPeerConnection = (isCaller = false) => {
@@ -860,32 +1109,37 @@ export const WebRTCProvider = ({ children }) => {
       if (pcRef.current !== pc) return;
       const socket = signalingSocketRef.current;
       if (event.candidate && socket?.readyState === WebSocket.OPEN) {
-        console.log("[WebRTC] Sending ICE candidate");
-        socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+        console.log('[WebRTC] Sending ICE candidate');
+        socket.send(
+          JSON.stringify({ type: 'candidate', candidate: event.candidate }),
+        );
       }
     };
 
     pc.ontrack = (event) => {
       if (pcRef.current !== pc) return;
-      console.log("[WebRTC] Track received:", event.track.kind);
+      console.log('[WebRTC] Track received:', event.track.kind);
 
-      if (!screenTransceiverRef.current || !contentAudioTransceiverRef.current) bindTransceivers(pc);
+      if (!screenTransceiverRef.current || !contentAudioTransceiverRef.current)
+        bindTransceivers(pc);
       const screenTransceiver = screenTransceiverRef.current;
       const contentAudioTransceiver = contentAudioTransceiverRef.current;
-      const isScreen = event.track.kind === 'video' && (
-        event.transceiver === screenTransceiver
-        || (screenTransceiver?.mid && event.transceiver.mid === screenTransceiver.mid)
-      );
-      const isContentAudio = event.track.kind === 'audio' && (
-        event.transceiver === contentAudioTransceiver
-        || (contentAudioTransceiver?.mid && event.transceiver.mid === contentAudioTransceiver.mid)
-      );
-      
+      const isScreen =
+        event.track.kind === 'video' &&
+        (event.transceiver === screenTransceiver ||
+          (screenTransceiver?.mid &&
+            event.transceiver.mid === screenTransceiver.mid));
+      const isContentAudio =
+        event.track.kind === 'audio' &&
+        (event.transceiver === contentAudioTransceiver ||
+          (contentAudioTransceiver?.mid &&
+            event.transceiver.mid === contentAudioTransceiver.mid));
+
       if (!isScreen && !isContentAudio) {
         // Audio or Camera
-        setRemoteStream(prev => {
+        setRemoteStream((prev) => {
           if (prev) {
-            if (!prev.getTracks().find(t => t.id === event.track.id)) {
+            if (!prev.getTracks().find((t) => t.id === event.track.id)) {
               prev.addTrack(event.track);
             }
             return new MediaStream(prev.getTracks());
@@ -894,29 +1148,37 @@ export const WebRTCProvider = ({ children }) => {
         });
       } else {
         // Shared content (screen or movie) keeps video and audio in one remote stream.
-        setRemoteScreenStream(prev => {
+        setRemoteScreenStream((prev) => {
           const tracksById = new Map(
-            (prev?.getTracks() || []).map(track => [track.id, track]),
+            (prev?.getTracks() || []).map((track) => [track.id, track]),
           );
-          event.streams?.[0]?.getTracks().forEach(track => tracksById.set(track.id, track));
+          event.streams?.[0]
+            ?.getTracks()
+            .forEach((track) => tracksById.set(track.id, track));
           tracksById.set(event.track.id, event.track);
           return new MediaStream([...tracksById.values()]);
         });
 
         if (isScreen) {
           event.track.onended = () => {
-            setRemoteScreenStream(current => (
-              current?.getTracks().some(track => track.id === event.track.id) ? null : current
-            ));
+            setRemoteScreenStream((current) =>
+              current?.getTracks().some((track) => track.id === event.track.id)
+                ? null
+                : current,
+            );
             setRemoteScreenSharing(false);
             setRemoteShareSource(null);
           };
         } else {
           event.track.onended = () => {
-            setRemoteScreenStream(current => {
+            setRemoteScreenStream((current) => {
               if (!current) return current;
-              const remainingTracks = current.getTracks().filter(track => track.id !== event.track.id);
-              return remainingTracks.length ? new MediaStream(remainingTracks) : null;
+              const remainingTracks = current
+                .getTracks()
+                .filter((track) => track.id !== event.track.id);
+              return remainingTracks.length
+                ? new MediaStream(remainingTracks)
+                : null;
             });
           };
         }
@@ -930,7 +1192,7 @@ export const WebRTCProvider = ({ children }) => {
 
     pc.onconnectionstatechange = () => {
       if (pcRef.current !== pc) return;
-      console.log("[WebRTC] Connection state changed:", pc.connectionState);
+      console.log('[WebRTC] Connection state changed:', pc.connectionState);
       if (pc.connectionState === 'connected') {
         if (disconnectRecoveryTimerRef.current) {
           window.clearTimeout(disconnectRecoveryTimerRef.current);
@@ -944,7 +1206,8 @@ export const WebRTCProvider = ({ children }) => {
         if (!disconnectRecoveryTimerRef.current) {
           disconnectRecoveryTimerRef.current = window.setTimeout(() => {
             disconnectRecoveryTimerRef.current = null;
-            if (pcRef.current !== pc || pc.connectionState !== 'disconnected') return;
+            if (pcRef.current !== pc || pc.connectionState !== 'disconnected')
+              return;
             setConnected(false);
             if (isCallerRef.current) {
               restartIceRef.current?.();
@@ -969,39 +1232,54 @@ export const WebRTCProvider = ({ children }) => {
         }
       }
     };
-    
+
     pc.oniceconnectionstatechange = () => {
       if (pcRef.current !== pc) return;
-      console.log("[WebRTC] ICE Connection state:", pc.iceConnectionState);
+      console.log('[WebRTC] ICE Connection state:', pc.iceConnectionState);
     };
 
     if (isCaller) {
-      const audioTrack = outgoingAudioTrackRef.current?.readyState === 'live'
-        ? outgoingAudioTrackRef.current
-        : localStreamRef.current?.getAudioTracks()[0];
+      const audioTrack =
+        outgoingAudioTrackRef.current?.readyState === 'live'
+          ? outgoingAudioTrackRef.current
+          : localStreamRef.current?.getAudioTracks()[0];
       const videoTrack = localStreamRef.current?.getVideoTracks()[0];
       const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
-      const contentAudioTrack = localContentAudioTrackRef.current?.readyState === 'live'
-        ? localContentAudioTrackRef.current
-        : null;
+      const contentAudioTrack =
+        localContentAudioTrackRef.current?.readyState === 'live'
+          ? localContentAudioTrackRef.current
+          : null;
 
       if (audioTrack) {
-        audioTransceiverRef.current = pc.addTransceiver(audioTrack, { direction: 'sendrecv' });
+        audioTransceiverRef.current = pc.addTransceiver(audioTrack, {
+          direction: 'sendrecv',
+        });
       } else {
-        audioTransceiverRef.current = pc.addTransceiver('audio', { direction: 'sendrecv' });
+        audioTransceiverRef.current = pc.addTransceiver('audio', {
+          direction: 'sendrecv',
+        });
       }
 
       if (videoTrack) {
-        cameraTransceiverRef.current = pc.addTransceiver(videoTrack, { direction: 'sendrecv' });
+        cameraTransceiverRef.current = pc.addTransceiver(videoTrack, {
+          direction: 'sendrecv',
+        });
       } else {
-        cameraTransceiverRef.current = pc.addTransceiver('video', { direction: 'sendrecv' });
+        cameraTransceiverRef.current = pc.addTransceiver('video', {
+          direction: 'sendrecv',
+        });
       }
 
       const outgoingScreenTrack = screenTrack || createEmptyVideoTrack();
-      const outgoingContentAudioTrack = contentAudioTrack || createEmptyAudioTrack();
+      const outgoingContentAudioTrack =
+        contentAudioTrack || createEmptyAudioTrack();
       if (!screenTrack) screenPlaceholderTrackRef.current = outgoingScreenTrack;
-      if (!contentAudioTrack) contentAudioPlaceholderTrackRef.current = outgoingContentAudioTrack;
-      const contentTracks = [outgoingScreenTrack, outgoingContentAudioTrack].filter(Boolean);
+      if (!contentAudioTrack)
+        contentAudioPlaceholderTrackRef.current = outgoingContentAudioTrack;
+      const contentTracks = [
+        outgoingScreenTrack,
+        outgoingContentAudioTrack,
+      ].filter(Boolean);
       contentAssociationStreamRef.current = new MediaStream(contentTracks);
       screenTransceiverRef.current = outgoingScreenTrack
         ? pc.addTransceiver(outgoingScreenTrack, {
@@ -1030,7 +1308,7 @@ export const WebRTCProvider = ({ children }) => {
   };
 
   const startCall = async () => {
-    console.log("[WebRTC] Starting call...");
+    console.log('[WebRTC] Starting call...');
     initPeerConnection(true);
 
     const pc = pcRef.current;
@@ -1045,7 +1323,7 @@ export const WebRTCProvider = ({ children }) => {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     if (pcRef.current !== pc || signalingSocketRef.current !== socket) return;
-    console.log("[Signaling] Sending offer");
+    console.log('[Signaling] Sending offer');
     socket.send(JSON.stringify(pc.localDescription));
   };
   startCallRef.current = startCall;
@@ -1054,12 +1332,13 @@ export const WebRTCProvider = ({ children }) => {
     const pc = pcRef.current;
     const socket = signalingSocketRef.current;
     if (
-      !pc
-      || !isCallerRef.current
-      || iceRestartInFlightRef.current
-      || pc.signalingState !== 'stable'
-      || socket?.readyState !== WebSocket.OPEN
-    ) return;
+      !pc ||
+      !isCallerRef.current ||
+      iceRestartInFlightRef.current ||
+      pc.signalingState !== 'stable' ||
+      socket?.readyState !== WebSocket.OPEN
+    )
+      return;
 
     iceRestartInFlightRef.current = true;
     try {
@@ -1070,10 +1349,13 @@ export const WebRTCProvider = ({ children }) => {
         iceRestartInFlightRef.current = false;
         return;
       }
-      socket.send(JSON.stringify({ ...pc.localDescription.toJSON(), iceRestart: true }));
+      socket.send(
+        JSON.stringify({ ...pc.localDescription.toJSON(), iceRestart: true }),
+      );
     } catch (error) {
       iceRestartInFlightRef.current = false;
-      if (pcRef.current === pc) console.error('[WebRTC] ICE restart failed:', error);
+      if (pcRef.current === pc)
+        console.error('[WebRTC] ICE restart failed:', error);
     }
   };
   restartIceRef.current = restartIce;
@@ -1086,13 +1368,16 @@ export const WebRTCProvider = ({ children }) => {
       text,
     });
     if (!payload || !channel || channel.readyState !== 'open') {
-      console.warn("Data channel is not open");
+      console.warn('Data channel is not open');
       return false;
     }
 
     const message = normalizeChatMessagePayload(payload, 'local');
     channel.send(JSON.stringify(payload));
-    const nextMessages = appendUniqueChatMessage(chatMessagesRef.current, message);
+    const nextMessages = appendUniqueChatMessage(
+      chatMessagesRef.current,
+      message,
+    );
     chatMessagesRef.current = nextMessages;
     setChatMessages(nextMessages);
     return true;
@@ -1100,8 +1385,15 @@ export const WebRTCProvider = ({ children }) => {
 
   const toggleMessageReaction = (messageId, emoji) => {
     const channel = dataChannelRef.current;
-    const message = chatMessagesRef.current.find(item => item.id === messageId);
-    if (!message || !isSupportedChatEmoji(emoji) || !channel || channel.readyState !== 'open') {
+    const message = chatMessagesRef.current.find(
+      (item) => item.id === messageId,
+    );
+    if (
+      !message ||
+      !isSupportedChatEmoji(emoji) ||
+      !channel ||
+      channel.readyState !== 'open'
+    ) {
       return false;
     }
 
@@ -1112,28 +1404,50 @@ export const WebRTCProvider = ({ children }) => {
       active: !message.reactions?.[emoji]?.local,
     };
     channel.send(JSON.stringify(reaction));
-    const nextMessages = applyChatReaction(chatMessagesRef.current, reaction, 'local');
+    const nextMessages = applyChatReaction(
+      chatMessagesRef.current,
+      reaction,
+      'local',
+    );
     chatMessagesRef.current = nextMessages;
     setChatMessages(nextMessages);
     return true;
   };
 
   const sendControlMessage = (data) => {
-    if (dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
+    if (
+      dataChannelRef.current &&
+      dataChannelRef.current.readyState === 'open'
+    ) {
       dataChannelRef.current.send(JSON.stringify(data));
     }
   };
 
   const requestMovieControl = useCallback((owner, command) => {
-    if (!command || !['play', 'pause', 'seek', 'audio-track', 'subtitle-track', 'subtitles'].includes(command.action)) {
+    if (
+      !command ||
+      ![
+        'play',
+        'pause',
+        'seek',
+        'audio-track',
+        'subtitle-track',
+        'subtitles',
+      ].includes(command.action)
+    ) {
       return false;
     }
     const normalizedCommand = {
       action: command.action,
-      currentTime: Number.isFinite(command.currentTime) ? Math.max(0, command.currentTime) : null,
-      trackIndex: Number.isInteger(command.trackIndex) ? command.trackIndex : null,
+      currentTime: Number.isFinite(command.currentTime)
+        ? Math.max(0, command.currentTime)
+        : null,
+      trackIndex: Number.isInteger(command.trackIndex)
+        ? command.trackIndex
+        : null,
       enabled: typeof command.enabled === 'boolean' ? command.enabled : null,
-      resumeAfterSeek: command.action === 'seek' && command.resumeAfterSeek === true,
+      resumeAfterSeek:
+        command.action === 'seek' && command.resumeAfterSeek === true,
     };
     if (owner === 'local') {
       setMovieControlRequest({
@@ -1143,106 +1457,131 @@ export const WebRTCProvider = ({ children }) => {
       return true;
     }
     if (owner === 'remote' && dataChannelRef.current?.readyState === 'open') {
-      dataChannelRef.current.send(JSON.stringify({
-        type: 'movie-control-request',
-        ...normalizedCommand,
-      }));
+      dataChannelRef.current.send(
+        JSON.stringify({
+          type: 'movie-control-request',
+          ...normalizedCommand,
+        }),
+      );
       return true;
     }
     return false;
   }, []);
 
-  const proposeExternalWatch = useCallback(media => {
-    const channel = dataChannelRef.current;
-    if (channel?.readyState !== 'open' || externalWatchSessionRef.current) return false;
-    const proposal = createExternalWatchProposal({
-      clientId: clientIdRef.current,
-      sequence: messageSequenceRef.current++,
-      media,
-    });
-    if (!proposal) return false;
-    channel.send(JSON.stringify(proposal));
-    setOutgoingExternalWatchProposal(proposal);
-    setExternalWatchProposalStatus('pending');
-    return true;
-  }, [setOutgoingExternalWatchProposal]);
-
-  const respondExternalWatchProposal = useCallback((accepted) => {
-    const proposal = externalWatchInvite;
-    const channel = dataChannelRef.current;
-    if (!proposal || channel?.readyState !== 'open') return false;
-    const response = normalizeExternalWatchResponse({
-      type: 'external-watch-response',
-      proposalId: proposal.proposalId,
-      accepted: Boolean(accepted),
-    });
-    if (!response) return false;
-    channel.send(JSON.stringify(response));
-    if (response.accepted) {
-      externalWatchRevisionRef.current = 0;
-      setExternalWatchSession({
-        proposalId: proposal.proposalId,
-        media: proposal.media,
-        authority: 'remote',
-        playback: null,
-        mediaRevision: 0,
+  const proposeExternalWatch = useCallback(
+    (media) => {
+      const channel = dataChannelRef.current;
+      if (channel?.readyState !== 'open' || externalWatchSessionRef.current)
+        return false;
+      const proposal = createExternalWatchProposal({
+        clientId: clientIdRef.current,
+        sequence: messageSequenceRef.current++,
+        media,
       });
-      setExternalWatchProposalStatus('accepted');
-    } else {
-      setExternalWatchProposalStatus('declined');
-    }
-    setExternalWatchInvite(null);
-    return true;
-  }, [externalWatchInvite, setExternalWatchSession]);
+      if (!proposal) return false;
+      channel.send(JSON.stringify(proposal));
+      setOutgoingExternalWatchProposal(proposal);
+      setExternalWatchProposalStatus('pending');
+      return true;
+    },
+    [setOutgoingExternalWatchProposal],
+  );
 
-  const selectExternalWatchEpisode = useCallback(media => {
-    const session = externalWatchSessionRef.current;
-    const channel = dataChannelRef.current;
-    const normalizedMedia = normalizeExternalWatchMedia(media);
-    if (
-      !session
-      || channel?.readyState !== 'open'
-      || !normalizedMedia
-      || !isSameExternalSeries(session, normalizedMedia)
-    ) return false;
+  const respondExternalWatchProposal = useCallback(
+    (accepted) => {
+      const proposal = externalWatchInvite;
+      const channel = dataChannelRef.current;
+      if (!proposal || channel?.readyState !== 'open') return false;
+      const response = normalizeExternalWatchResponse({
+        type: 'external-watch-response',
+        proposalId: proposal.proposalId,
+        accepted: Boolean(accepted),
+      });
+      if (!response) return false;
+      channel.send(JSON.stringify(response));
+      if (response.accepted) {
+        externalWatchRevisionRef.current = 0;
+        setExternalWatchSession({
+          proposalId: proposal.proposalId,
+          media: proposal.media,
+          authority: 'remote',
+          playback: null,
+          mediaRevision: 0,
+        });
+        setExternalWatchProposalStatus('accepted');
+      } else {
+        setExternalWatchProposalStatus('declined');
+      }
+      setExternalWatchInvite(null);
+      return true;
+    },
+    [externalWatchInvite, setExternalWatchSession],
+  );
 
-    if (session.authority === 'remote') {
-      const request = normalizeExternalWatchEpisodeRequest({
-        type: 'external-watch-episode-request',
+  const selectExternalWatchEpisode = useCallback(
+    (media) => {
+      const session = externalWatchSessionRef.current;
+      const channel = dataChannelRef.current;
+      const normalizedMedia = normalizeExternalWatchMedia(media);
+      if (
+        !session ||
+        channel?.readyState !== 'open' ||
+        !normalizedMedia ||
+        !isSameExternalSeries(session, normalizedMedia)
+      )
+        return false;
+
+      if (session.authority === 'remote') {
+        const request = normalizeExternalWatchEpisodeRequest({
+          type: 'external-watch-episode-request',
+          proposalId: session.proposalId,
+          requestId: `${clientIdRef.current}-${messageSequenceRef.current++}`
+            .replace(/[^a-zA-Z0-9_-]/g, '')
+            .slice(0, 96),
+          media: normalizedMedia,
+        });
+        if (!request) return false;
+        channel.send(JSON.stringify(request));
+        return true;
+      }
+
+      const state = normalizeExternalWatchMediaState({
+        type: 'external-watch-media-state',
         proposalId: session.proposalId,
-        requestId: `${clientIdRef.current}-${messageSequenceRef.current++}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96),
+        revision: (session.mediaRevision || 0) + 1,
         media: normalizedMedia,
       });
-      if (!request) return false;
-      channel.send(JSON.stringify(request));
+      if (!state) return false;
+      externalWatchRevisionRef.current = 0;
+      setExternalWatchCommand(null);
+      setExternalWatchSession({
+        ...session,
+        media: state.media,
+        mediaRevision: state.revision,
+        mediaChangedAt: Date.now(),
+        playback: null,
+      });
+      channel.send(JSON.stringify(state));
       return true;
-    }
+    },
+    [setExternalWatchSession],
+  );
 
-    const state = normalizeExternalWatchMediaState({
-      type: 'external-watch-media-state',
-      proposalId: session.proposalId,
-      revision: (session.mediaRevision || 0) + 1,
-      media: normalizedMedia,
-    });
-    if (!state) return false;
-    externalWatchRevisionRef.current = 0;
-    setExternalWatchCommand(null);
-    setExternalWatchSession({ ...session, media: state.media, mediaRevision: state.revision, mediaChangedAt: Date.now(), playback: null });
-    channel.send(JSON.stringify(state));
-    return true;
-  }, [setExternalWatchSession]);
-
-  const requestExternalWatchControl = useCallback(command => {
+  const requestExternalWatchControl = useCallback((command) => {
     const session = externalWatchSessionRef.current;
     if (
-      !session
-      || !command
-      || (session.mediaChangedAt && Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
-    ) return false;
+      !session ||
+      !command ||
+      (session.mediaChangedAt &&
+        Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
+    )
+      return false;
     const normalized = normalizeExternalWatchCommand({
       type: 'external-watch-command',
       proposalId: session.proposalId,
-      commandId: `${clientIdRef.current}-${messageSequenceRef.current++}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96),
+      commandId: `${clientIdRef.current}-${messageSequenceRef.current++}`
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+        .slice(0, 96),
       mediaRevision: session.mediaRevision || 0,
       action: command.action,
       position: command.position,
@@ -1259,38 +1598,45 @@ export const WebRTCProvider = ({ children }) => {
     return true;
   }, []);
 
-  const publishExternalWatchState = useCallback(playback => {
-    const session = externalWatchSessionRef.current;
-    const channel = dataChannelRef.current;
-    if (
-      !session
-      || session.authority !== 'local'
-      || (session.mediaChangedAt && Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
-    ) return false;
-    const state = normalizeExternalWatchState({
-      type: 'external-watch-state',
-      proposalId: session.proposalId,
-      revision: ++externalWatchRevisionRef.current,
-      mediaRevision: session.mediaRevision || 0,
-      paused: playback?.paused,
-      position: playback?.position,
-      duration: playback?.duration,
-    });
-    if (!state) return false;
-    setExternalWatchSession({ ...session, playback: state });
-    if (channel?.readyState === 'open') {
-      channel.send(JSON.stringify(state));
-      return true;
-    }
-    return false;
-  }, [setExternalWatchSession]);
+  const publishExternalWatchState = useCallback(
+    (playback) => {
+      const session = externalWatchSessionRef.current;
+      const channel = dataChannelRef.current;
+      if (
+        !session ||
+        session.authority !== 'local' ||
+        (session.mediaChangedAt &&
+          Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
+      )
+        return false;
+      const state = normalizeExternalWatchState({
+        type: 'external-watch-state',
+        proposalId: session.proposalId,
+        revision: ++externalWatchRevisionRef.current,
+        mediaRevision: session.mediaRevision || 0,
+        paused: playback?.paused,
+        position: playback?.position,
+        duration: playback?.duration,
+      });
+      if (!state) return false;
+      setExternalWatchSession({ ...session, playback: state });
+      if (channel?.readyState === 'open') {
+        channel.send(JSON.stringify(state));
+        return true;
+      }
+      return false;
+    },
+    [setExternalWatchSession],
+  );
 
   const stopExternalWatch = useCallback(() => {
     const session = externalWatchSessionRef.current;
     const pendingProposal = outgoingExternalWatchProposalRef.current;
     const proposalId = session?.proposalId || pendingProposal?.proposalId;
     if (proposalId && dataChannelRef.current?.readyState === 'open') {
-      dataChannelRef.current.send(JSON.stringify({ type: 'external-watch-stop', proposalId }));
+      dataChannelRef.current.send(
+        JSON.stringify({ type: 'external-watch-stop', proposalId }),
+      );
     }
     setExternalWatchInvite(null);
     setOutgoingExternalWatchProposal(null);
@@ -1302,13 +1648,14 @@ export const WebRTCProvider = ({ children }) => {
 
   const endCall = () => {
     resetRemotePeer();
-    localStreamRef.current?.getTracks().forEach(track => track.stop());
-    localScreenStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localScreenStreamRef.current?.getTracks().forEach((track) => track.stop());
     const contentAudioTrack = localContentAudioTrackRef.current;
     const contentAudioOwnedByShare = localScreenStreamRef.current
       ?.getTracks()
-      .some(track => track.id === contentAudioTrack?.id);
-    if (contentAudioTrack && !contentAudioOwnedByShare) contentAudioTrack.stop();
+      .some((track) => track.id === contentAudioTrack?.id);
+    if (contentAudioTrack && !contentAudioOwnedByShare)
+      contentAudioTrack.stop();
     localStreamRef.current = null;
     localScreenStreamRef.current = null;
     localContentAudioTrackRef.current = null;
@@ -1332,13 +1679,20 @@ export const WebRTCProvider = ({ children }) => {
 
   const getSender = (kind, isScreen = false) => {
     if (!pcRef.current) return null;
-    if (!audioTransceiverRef.current || !cameraTransceiverRef.current || !screenTransceiverRef.current || !contentAudioTransceiverRef.current) {
+    if (
+      !audioTransceiverRef.current ||
+      !cameraTransceiverRef.current ||
+      !screenTransceiverRef.current ||
+      !contentAudioTransceiverRef.current
+    ) {
       bindTransceivers(pcRef.current);
     }
 
     if (kind === 'audio') return audioTransceiverRef.current?.sender || null;
-    if (kind === 'video' && !isScreen) return cameraTransceiverRef.current?.sender || null;
-    if (kind === 'video' && isScreen) return screenTransceiverRef.current?.sender || null;
+    if (kind === 'video' && !isScreen)
+      return cameraTransceiverRef.current?.sender || null;
+    if (kind === 'video' && isScreen)
+      return screenTransceiverRef.current?.sender || null;
     return null;
   };
 
@@ -1350,9 +1704,10 @@ export const WebRTCProvider = ({ children }) => {
     const microphoneTrack = stream.getAudioTracks()[0] || null;
     let nextAudioTrack = microphoneTrack;
     if (!nextAudioTrack) {
-      const reusablePlaceholder = audioPlaceholderTrackRef.current?.readyState === 'live'
-        ? audioPlaceholderTrackRef.current
-        : createEmptyAudioTrack();
+      const reusablePlaceholder =
+        audioPlaceholderTrackRef.current?.readyState === 'live'
+          ? audioPlaceholderTrackRef.current
+          : createEmptyAudioTrack();
       audioPlaceholderTrackRef.current = reusablePlaceholder;
       nextAudioTrack = reusablePlaceholder;
     }
@@ -1362,8 +1717,10 @@ export const WebRTCProvider = ({ children }) => {
       const audioSender = getSender('audio');
       const videoTrack = stream.getVideoTracks()[0] || null;
       const videoSender = getSender('video', false);
-      if (audioSender && nextAudioTrack) replacements.push(audioSender.replaceTrack(nextAudioTrack));
-      if (videoSender && videoTrack) replacements.push(videoSender.replaceTrack(videoTrack));
+      if (audioSender && nextAudioTrack)
+        replacements.push(audioSender.replaceTrack(nextAudioTrack));
+      if (videoSender && videoTrack)
+        replacements.push(videoSender.replaceTrack(videoTrack));
     }
 
     return Promise.all(replacements)
@@ -1373,7 +1730,7 @@ export const WebRTCProvider = ({ children }) => {
           audioPlaceholderTrackRef.current = null;
         }
       })
-      .catch(error => {
+      .catch((error) => {
         console.warn('Failed to update a camera or microphone sender', error);
         throw error;
       });
@@ -1391,13 +1748,18 @@ export const WebRTCProvider = ({ children }) => {
 
     if (!contentAudioTransceiverRef.current) bindTransceivers(pcRef.current);
     const sender = contentAudioTransceiverRef.current?.sender;
-    if (!sender) throw new Error('The shared-content audio sender is not ready.');
+    if (!sender)
+      throw new Error('The shared-content audio sender is not ready.');
 
     const outgoingTrack = track || createEmptyAudioTrack();
-    if (!outgoingTrack) throw new Error('Unable to keep the shared-content audio sender active.');
+    if (!outgoingTrack)
+      throw new Error('Unable to keep the shared-content audio sender active.');
     await sender.replaceTrack(outgoingTrack);
 
-    if (contentAudioPlaceholderTrackRef.current && contentAudioPlaceholderTrackRef.current !== outgoingTrack) {
+    if (
+      contentAudioPlaceholderTrackRef.current &&
+      contentAudioPlaceholderTrackRef.current !== outgoingTrack
+    ) {
       contentAudioPlaceholderTrackRef.current.stop();
     }
     contentAudioPlaceholderTrackRef.current = track ? null : outgoingTrack;
@@ -1405,16 +1767,21 @@ export const WebRTCProvider = ({ children }) => {
 
   const setScreenStream = async (stream) => {
     const videoTrack = stream?.getVideoTracks()[0] || null;
-    if (stream && !videoTrack) throw new Error('The selected screen has no video track.');
+    if (stream && !videoTrack)
+      throw new Error('The selected screen has no video track.');
 
     if (pcRef.current) {
       const sender = getSender('video', true);
       if (!sender) throw new Error('The screen-share sender is not ready.');
       const outgoingTrack = videoTrack || createEmptyVideoTrack();
-      if (!outgoingTrack) throw new Error('Unable to keep the screen-share sender active.');
+      if (!outgoingTrack)
+        throw new Error('Unable to keep the screen-share sender active.');
       await sender.replaceTrack(outgoingTrack);
 
-      if (screenPlaceholderTrackRef.current && screenPlaceholderTrackRef.current !== outgoingTrack) {
+      if (
+        screenPlaceholderTrackRef.current &&
+        screenPlaceholderTrackRef.current !== outgoingTrack
+      ) {
         screenPlaceholderTrackRef.current.stop();
       }
       screenPlaceholderTrackRef.current = videoTrack ? null : outgoingTrack;
@@ -1461,71 +1828,73 @@ export const WebRTCProvider = ({ children }) => {
   }, [connected]);
 
   return (
-    <WebRTCContext.Provider value={{
-      wsStatus: status,
-      reconnectAttempt,
-      localStream,
-      localScreenStream,
-      remoteStream,
-      remoteScreenStream,
-      chatMessages,
-      startCall,
-      endCall,
-      sendMessage,
-      toggleMessageReaction,
-      sendControlMessage,
-      requestMovieControl,
-      movieControlRequest,
-      externalWatchInvite,
-      outgoingExternalWatchProposal,
-      externalWatchSession,
-      externalWatchCommand,
-      externalWatchProposalStatus,
-      proposeExternalWatch,
-      respondExternalWatchProposal,
-      requestExternalWatchControl,
-      publishExternalWatchState,
-      selectExternalWatchEpisode,
-      stopExternalWatch,
-      setCameraStream,
-      setOutgoingAudioTrack,
-      setSharedContentAudioTrack,
-      setScreenStream,
-      getSender,
-      connected,
-      isScreenSharing,
-      setIsScreenSharing,
-      isCameraOff,
-      setIsCameraOff,
-      isMuted,
-      setIsMuted,
-      remoteMirrored,
-      remoteCameraOff,
-      remoteScreenSharing,
-      localShareSource,
-      setLocalShareSource,
-      remoteShareSource,
-      participantVolume,
-      setParticipantVolume,
-      screenVolume,
-      setScreenVolume,
-      movieVolume,
-      setMovieVolume,
-      peerPresence,
-      connectionStats,
-      roomId,
-      roomError,
-      joinRoom,
-      isFullscreen,
-      setIsFullscreen,
-      isPresentationMode,
-      setIsPresentationMode,
-      isChatOpen,
-      setIsChatOpen,
-      unreadCount,
-      notificationSoundEnabled,
-      setNotificationSoundEnabled,
-    }}>
+    <WebRTCContext.Provider
+      value={{
+        wsStatus: status,
+        reconnectAttempt,
+        localStream,
+        localScreenStream,
+        remoteStream,
+        remoteScreenStream,
+        chatMessages,
+        startCall,
+        endCall,
+        sendMessage,
+        toggleMessageReaction,
+        sendControlMessage,
+        requestMovieControl,
+        movieControlRequest,
+        externalWatchInvite,
+        outgoingExternalWatchProposal,
+        externalWatchSession,
+        externalWatchCommand,
+        externalWatchProposalStatus,
+        proposeExternalWatch,
+        respondExternalWatchProposal,
+        requestExternalWatchControl,
+        publishExternalWatchState,
+        selectExternalWatchEpisode,
+        stopExternalWatch,
+        setCameraStream,
+        setOutgoingAudioTrack,
+        setSharedContentAudioTrack,
+        setScreenStream,
+        getSender,
+        connected,
+        isScreenSharing,
+        setIsScreenSharing,
+        isCameraOff,
+        setIsCameraOff,
+        isMuted,
+        setIsMuted,
+        remoteMirrored,
+        remoteCameraOff,
+        remoteScreenSharing,
+        localShareSource,
+        setLocalShareSource,
+        remoteShareSource,
+        participantVolume,
+        setParticipantVolume,
+        screenVolume,
+        setScreenVolume,
+        movieVolume,
+        setMovieVolume,
+        peerPresence,
+        connectionStats,
+        roomId,
+        roomError,
+        joinRoom,
+        isFullscreen,
+        setIsFullscreen,
+        isPresentationMode,
+        setIsPresentationMode,
+        isChatOpen,
+        setIsChatOpen,
+        unreadCount,
+        notificationSoundEnabled,
+        setNotificationSoundEnabled,
+      }}
+    >
       {children}
     </WebRTCContext.Provider>
   );

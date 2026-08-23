@@ -6,7 +6,7 @@ let lastProgressAt = 0;
 let resumeAfterUserSeek = false;
 let lastActivityAt = 0;
 
-const sendRuntimeMessage = message => {
+const sendRuntimeMessage = (message) => {
   try {
     if (!chrome.runtime?.id) return;
     chrome.runtime.sendMessage(message, () => {
@@ -35,19 +35,22 @@ window.addEventListener('pointermove', reportUserActivity, { passive: true });
 window.addEventListener('pointerdown', reportUserActivity, { passive: true });
 window.addEventListener('keydown', reportUserActivity);
 
-const isExpectedPlaybackInterruption = error => (
-  error?.name === 'AbortError'
-  || /play\(\) request was interrupted|interrupted by a call to pause|interrupted by a new load request/i.test(String(error?.message || error || ''))
-);
+const isExpectedPlaybackInterruption = (error) =>
+  error?.name === 'AbortError' ||
+  /play\(\) request was interrupted|interrupted by a call to pause|interrupted by a new load request/i.test(
+    String(error?.message || error || ''),
+  );
 
 const beginExpectedEvents = (commandId, events) => {
-  const normalizedId = typeof commandId === 'string' ? commandId.slice(0, 96) : null;
-  pendingCommand = normalizedId && events.size
-    ? { commandId: normalizedId, events, expiresAt: performance.now() + 2500 }
-    : null;
+  const normalizedId =
+    typeof commandId === 'string' ? commandId.slice(0, 96) : null;
+  pendingCommand =
+    normalizedId && events.size
+      ? { commandId: normalizedId, events, expiresAt: performance.now() + 2500 }
+      : null;
 };
 
-const consumeCommandId = eventName => {
+const consumeCommandId = (eventName) => {
   if (!pendingCommand) return null;
   if (performance.now() > pendingCommand.expiresAt) {
     pendingCommand = null;
@@ -66,7 +69,10 @@ const snapshot = (eventName, extra = {}) => ({
   position: Number.isFinite(player?.currentTime) ? player.currentTime : 0,
   duration: Number.isFinite(player?.duration) ? player.duration : null,
   readyState: player?.readyState ?? 0,
-  commandId: extra.commandId === undefined ? consumeCommandId(eventName) : extra.commandId,
+  commandId:
+    extra.commandId === undefined
+      ? consumeCommandId(eventName)
+      : extra.commandId,
   ...extra,
 });
 
@@ -87,11 +93,12 @@ const rememberPlayback = (eventName, extra) => {
   report(eventName, extra);
 };
 
-const isExpectingSeek = () => Boolean(
-  pendingCommand
-  && performance.now() <= pendingCommand.expiresAt
-  && pendingCommand.events.has('seeked')
-);
+const isExpectingSeek = () =>
+  Boolean(
+    pendingCommand &&
+    performance.now() <= pendingCommand.expiresAt &&
+    pendingCommand.events.has('seeked'),
+  );
 
 const handleSeeking = () => {
   if (!player || isExpectingSeek()) return;
@@ -124,12 +131,20 @@ const restoreAfterSourceChange = async () => {
     return;
   }
   const expected = new Set();
-  if (Math.abs(player.currentTime - desiredPlayback.position) > 1.25) expected.add('seeked');
-  if (desiredPlayback.paused !== player.paused) expected.add(desiredPlayback.paused ? 'pause' : 'play');
+  if (Math.abs(player.currentTime - desiredPlayback.position) > 1.25)
+    expected.add('seeked');
+  if (desiredPlayback.paused !== player.paused)
+    expected.add(desiredPlayback.paused ? 'pause' : 'play');
   beginExpectedEvents(`quality-restore-${Date.now()}`, expected);
   try {
     if (expected.has('seeked')) {
-      player.currentTime = Math.max(0, Math.min(desiredPlayback.position, player.duration || desiredPlayback.position));
+      player.currentTime = Math.max(
+        0,
+        Math.min(
+          desiredPlayback.position,
+          player.duration || desiredPlayback.position,
+        ),
+      );
     }
     if (desiredPlayback.paused) player.pause();
     else await player.play();
@@ -139,11 +154,15 @@ const restoreAfterSourceChange = async () => {
       report('ready');
       return;
     }
-    report('error', { error: error?.message || 'Playback could not resume after the player source changed.' });
+    report('error', {
+      error:
+        error?.message ||
+        'Playback could not resume after the player source changed.',
+    });
   }
 };
 
-const attach = candidate => {
+const attach = (candidate) => {
   if (!candidate || candidate === player) return;
   playerListeners?.abort();
   playerListeners = new AbortController();
@@ -162,12 +181,19 @@ const attach = candidate => {
   else report('attached');
 };
 
-const scorePlayer = candidate => {
+const scorePlayer = (candidate) => {
   if (!candidate.isConnected) return -1;
   const rect = candidate.getBoundingClientRect();
   const area = Math.max(0, rect.width * rect.height);
-  const duration = Number.isFinite(candidate.duration) ? Math.min(candidate.duration, 86_400) : 0;
-  return duration * 1_000_000 + area * 100 + candidate.readyState * 10 + (candidate.paused ? 0 : 1);
+  const duration = Number.isFinite(candidate.duration)
+    ? Math.min(candidate.duration, 86_400)
+    : 0;
+  return (
+    duration * 1_000_000 +
+    area * 100 +
+    candidate.readyState * 10 +
+    (candidate.paused ? 0 : 1)
+  );
 };
 
 const discoverPlayer = () => {
@@ -183,7 +209,7 @@ const discoverPlayer = () => {
   attach(best);
 };
 
-const runCommand = async command => {
+const runCommand = async (command) => {
   if (!player?.isConnected) discoverPlayer();
   if (!player) {
     report('error', { error: 'No controllable video element was found.' });
@@ -192,30 +218,53 @@ const runCommand = async command => {
 
   const expected = new Set();
   const requestedPosition = Number.isFinite(command.position)
-    ? Math.max(0, Math.min(command.position, player.duration || command.position))
+    ? Math.max(
+        0,
+        Math.min(command.position, player.duration || command.position),
+      )
     : null;
-  const shouldSeek = requestedPosition !== null && Math.abs(player.currentTime - requestedPosition) > 0.35;
-  if ((command.action === 'pause' || command.action === 'sync') && command.paused !== false && !player.paused) {
+  const shouldSeek =
+    requestedPosition !== null &&
+    Math.abs(player.currentTime - requestedPosition) > 0.35;
+  if (
+    (command.action === 'pause' || command.action === 'sync') &&
+    command.paused !== false &&
+    !player.paused
+  ) {
     expected.add('pause');
   }
-  if ((command.action === 'play' || (command.action === 'sync' && !command.paused)) && player.paused) {
+  if (
+    (command.action === 'play' ||
+      (command.action === 'sync' && !command.paused)) &&
+    player.paused
+  ) {
     expected.add('play');
   }
-  if ((command.action === 'seek' || command.action === 'sync') && shouldSeek) expected.add('seeked');
+  if ((command.action === 'seek' || command.action === 'sync') && shouldSeek)
+    expected.add('seeked');
   beginExpectedEvents(command.commandId, expected);
 
-  const currentDesired = desiredPlayback || { paused: player.paused, position: player.currentTime || 0 };
-  if (command.action === 'pause') desiredPlayback = { ...currentDesired, paused: true };
-  if (command.action === 'play') desiredPlayback = { ...currentDesired, paused: false };
+  const currentDesired = desiredPlayback || {
+    paused: player.paused,
+    position: player.currentTime || 0,
+  };
+  if (command.action === 'pause')
+    desiredPlayback = { ...currentDesired, paused: true };
+  if (command.action === 'play')
+    desiredPlayback = { ...currentDesired, paused: false };
   if (command.action === 'seek' && requestedPosition !== null) {
     desiredPlayback = { ...currentDesired, position: requestedPosition };
   }
 
   try {
     if (command.action === 'pause') player.pause();
-    if (command.action === 'seek' && shouldSeek) player.currentTime = requestedPosition;
+    if (command.action === 'seek' && shouldSeek)
+      player.currentTime = requestedPosition;
     if (command.action === 'sync') {
-      desiredPlayback = { paused: Boolean(command.paused), position: requestedPosition ?? player.currentTime };
+      desiredPlayback = {
+        paused: Boolean(command.paused),
+        position: requestedPosition ?? player.currentTime,
+      };
       if (shouldSeek) player.currentTime = requestedPosition;
       if (command.paused) player.pause();
       else await player.play();
@@ -231,7 +280,7 @@ const runCommand = async command => {
   }
 };
 
-chrome.runtime.onMessage.addListener(message => {
+chrome.runtime.onMessage.addListener((message) => {
   if (message?.target !== 'vidking-player') return;
   if (message.type === 'command') runCommand(message.command || {});
   if (message.type === 'register-request') {

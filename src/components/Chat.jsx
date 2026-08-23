@@ -29,13 +29,13 @@ const MessageReactions = ({ connected, message, onToggle }) => {
       className={`mt-1 flex min-h-7 flex-wrap items-center gap-1 ${isLocal ? 'justify-end' : 'justify-start'}`}
       aria-label="Message reactions"
     >
-      {reactions.map(reaction => (
+      {reactions.map((reaction) => (
         <button
           key={reaction.emoji}
           type="button"
           onClick={() => onToggle(message.id, reaction.emoji)}
           disabled={!connected}
-          className={`inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50 ${reaction.reactedByLocal ? 'border-teal-300/45 bg-teal-300/15 text-teal-100' : 'border-white/10 bg-white/[0.05] text-zinc-300 hover:bg-white/[0.09]'}`}
+          className={`inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:opacity-50 ${reaction.reactedByLocal ? 'border-teal-300/45 bg-teal-300/15 text-teal-100' : 'border-white/10 bg-white/[0.05] text-zinc-300 hover:bg-white/[0.09]'}`}
           aria-label={`${reaction.reactedByLocal ? 'Remove' : 'Add'} ${reaction.emoji} reaction. ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
           aria-pressed={reaction.reactedByLocal}
         >
@@ -43,8 +43,8 @@ const MessageReactions = ({ connected, message, onToggle }) => {
           <span>{reaction.count}</span>
         </button>
       ))}
-      <div className="flex items-center rounded-lg border border-white/[0.07] bg-[#111719]/95 p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-        {QUICK_REACTIONS.map(emoji => (
+      <div className="flex items-center rounded-lg border border-white/[0.07] bg-[#111719]/95 p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+        {QUICK_REACTIONS.map((emoji) => (
           <Button
             key={emoji}
             variant="ghost"
@@ -62,7 +62,7 @@ const MessageReactions = ({ connected, message, onToggle }) => {
           disabled={!connected}
           label="More reactions"
           align={isLocal ? 'end' : 'start'}
-          onSelect={emoji => onToggle(message.id, emoji)}
+          onSelect={(emoji) => onToggle(message.id, emoji)}
         />
       </div>
     </div>
@@ -100,7 +100,9 @@ export const Chat = ({ isIdle }) => {
   const scrollToLatest = useCallback((behavior = 'smooth') => {
     const messageList = messagesRef.current;
     if (!messageList) return;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
     messageList.scrollTo({
       top: messageList.scrollHeight,
       behavior: reduceMotion ? 'auto' : behavior,
@@ -117,7 +119,9 @@ export const Chat = ({ isIdle }) => {
     if (!hadNewMessage || !latestMessage) return;
 
     if (latestMessage.from === 'remote') {
-      setAnnouncement(`New message from the participant. ${chatMessages.length} messages in chat.`);
+      setAnnouncement(
+        `New message from the participant. ${chatMessages.length} messages in chat.`,
+      );
     }
 
     if (!isChatOpen && latestMessage.from === 'remote') {
@@ -142,7 +146,8 @@ export const Chat = ({ isIdle }) => {
       window.clearTimeout(notificationTimerRef.current);
       window.requestAnimationFrame(() => {
         scrollToLatest('auto');
-        if (window.matchMedia('(min-width: 768px)').matches) composerRef.current?.focus();
+        if (window.matchMedia('(min-width: 768px)').matches)
+          composerRef.current?.focus();
       });
     } else if (wasChatOpenRef.current) {
       window.requestAnimationFrame(() => launcherRef.current?.focus());
@@ -154,10 +159,11 @@ export const Chat = ({ isIdle }) => {
     if (!isChatOpen) return;
     const handleKeyDown = (event) => {
       if (
-        event.key === 'Escape'
-        && !event.defaultPrevented
-        && !event.target?.closest?.('[data-chat-emoji-picker="true"]')
-      ) setIsChatOpen(false);
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        !event.target?.closest?.('[data-chat-emoji-picker="true"]')
+      )
+        setIsChatOpen(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -173,7 +179,11 @@ export const Chat = ({ isIdle }) => {
   };
 
   const handleComposerKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
       handleSend(event);
     }
   };
@@ -182,8 +192,11 @@ export const Chat = ({ isIdle }) => {
     const composer = composerRef.current;
     const selectionStart = composer?.selectionStart ?? text.length;
     const selectionEnd = composer?.selectionEnd ?? text.length;
-    const nextText = `${text.slice(0, selectionStart)}${emoji}${text.slice(selectionEnd)}`
-      .slice(0, 2000);
+    const nextText =
+      `${text.slice(0, selectionStart)}${emoji}${text.slice(selectionEnd)}`.slice(
+        0,
+        2000,
+      );
     const nextCaret = Math.min(selectionStart + emoji.length, nextText.length);
     setText(nextText);
     window.requestAnimationFrame(() => {
@@ -194,7 +207,11 @@ export const Chat = ({ isIdle }) => {
 
   const handleMessageScroll = (event) => {
     const messageList = event.currentTarget;
-    const nearBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 72;
+    const nearBottom =
+      messageList.scrollHeight -
+        messageList.scrollTop -
+        messageList.clientHeight <
+      72;
     isNearBottomRef.current = nearBottom;
     if (nearBottom) setShowJumpToLatest(false);
   };
@@ -212,7 +229,10 @@ export const Chat = ({ isIdle }) => {
     : 'bottom-[8.5rem] right-3 sm:bottom-[4.75rem] sm:right-5';
 
   const fullscreenChatHidden = isFullscreen && isIdle;
-  const launcherHidden = isChatOpen || fullscreenChatHidden || (isIdle && unreadCount === 0 && !isFullscreen);
+  const launcherHidden =
+    isChatOpen ||
+    fullscreenChatHidden ||
+    (isIdle && unreadCount === 0 && !isFullscreen);
   const chatPanelVisible = isChatOpen && !fullscreenChatHidden;
 
   return (
@@ -222,14 +242,18 @@ export const Chat = ({ isIdle }) => {
         variant="secondary"
         onClick={() => setIsChatOpen(true)}
         className={`fixed z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherPlacement} ${launcherHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
-        aria-label={unreadCount > 0 ? `Open chat, ${unreadCount} unread messages` : 'Open chat'}
+        aria-label={
+          unreadCount > 0
+            ? `Open chat, ${unreadCount} unread messages`
+            : 'Open chat'
+        }
         aria-hidden={launcherHidden}
         tabIndex={launcherHidden ? -1 : undefined}
       >
         <MessageSquare className="size-4 text-teal-300" />
         <span className="hidden sm:inline">Chat</span>
         {unreadCount > 0 ? (
-          <span className="grid min-w-5 place-items-center rounded-full bg-teal-300 px-1.5 py-0.5 text-[10px] font-bold leading-4 text-[#07100f]">
+          <span className="grid min-w-5 place-items-center rounded-full bg-teal-300 px-1.5 py-0.5 text-[10px] leading-4 font-bold text-[#07100f]">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         ) : null}
@@ -250,8 +274,12 @@ export const Chat = ({ isIdle }) => {
               <MessageSquare className="size-4" />
             </span>
             <span>
-              <span className="block text-xs font-medium text-zinc-100">New message</span>
-              <span className="block text-[11px] text-zinc-500">Open room chat</span>
+              <span className="block text-xs font-medium text-zinc-100">
+                New message
+              </span>
+              <span className="block text-[11px] text-zinc-500">
+                Open room chat
+              </span>
             </span>
           </button>
           <Button
@@ -276,10 +304,16 @@ export const Chat = ({ isIdle }) => {
       >
         <header className="flex min-h-[4.5rem] items-center justify-between gap-3 border-b border-white/[0.08] px-4">
           <div className="min-w-0">
-            <h2 id="room-chat-title" className="truncate text-sm font-semibold text-zinc-100">
+            <h2
+              id="room-chat-title"
+              className="truncate text-sm font-semibold text-zinc-100"
+            >
               Room chat
             </h2>
-            <p id="room-chat-description" className="mt-0.5 text-[11px] text-zinc-500">
+            <p
+              id="room-chat-description"
+              className="mt-0.5 text-[11px] text-zinc-500"
+            >
               Peer-to-peer · not saved
             </p>
           </div>
@@ -288,11 +322,23 @@ export const Chat = ({ isIdle }) => {
               variant="ghost"
               size="icon"
               className="size-10"
-              onClick={() => setNotificationSoundEnabled(value => !value)}
-              aria-label={notificationSoundEnabled ? 'Mute chat notification sounds' : 'Enable chat notification sounds'}
-              title={notificationSoundEnabled ? 'Mute notification sounds' : 'Enable notification sounds'}
+              onClick={() => setNotificationSoundEnabled((value) => !value)}
+              aria-label={
+                notificationSoundEnabled
+                  ? 'Mute chat notification sounds'
+                  : 'Enable chat notification sounds'
+              }
+              title={
+                notificationSoundEnabled
+                  ? 'Mute notification sounds'
+                  : 'Enable notification sounds'
+              }
             >
-              {notificationSoundEnabled ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+              {notificationSoundEnabled ? (
+                <Bell className="size-4" />
+              ) : (
+                <BellOff className="size-4" />
+              )}
             </Button>
             <Button
               variant="ghost"
@@ -318,9 +364,12 @@ export const Chat = ({ isIdle }) => {
                 <span className="mb-3 grid size-11 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-zinc-600">
                   <MessageSquare className="size-5" />
                 </span>
-                <p className="text-sm font-medium text-zinc-400">No messages yet</p>
+                <p className="text-sm font-medium text-zinc-400">
+                  No messages yet
+                </p>
                 <p className="mt-1 max-w-[28ch] text-xs leading-5 text-zinc-600">
-                  Messages travel directly between participants and disappear when the room closes.
+                  Messages travel directly between participants and disappear
+                  when the room closes.
                 </p>
               </li>
             ) : (
@@ -331,9 +380,11 @@ export const Chat = ({ isIdle }) => {
                     key={message.id}
                     className={`group flex ${isLocal ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[86%] ${isLocal ? 'text-right' : 'text-left'}`}>
+                    <div
+                      className={`max-w-[86%] ${isLocal ? 'text-right' : 'text-left'}`}
+                    >
                       <div
-                        className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-left text-sm leading-5 ${isLocal ? 'rounded-br-md bg-teal-300 text-[#07100f]' : 'rounded-bl-md border border-white/[0.08] bg-white/[0.065] text-zinc-200'}`}
+                        className={`rounded-2xl px-3.5 py-2.5 text-left text-sm leading-5 break-words whitespace-pre-wrap ${isLocal ? 'rounded-br-md bg-teal-300 text-[#07100f]' : 'rounded-bl-md border border-white/[0.08] bg-white/[0.065] text-zinc-200'}`}
                       >
                         {message.text}
                       </div>
@@ -371,8 +422,13 @@ export const Chat = ({ isIdle }) => {
           ) : null}
         </div>
 
-        <form onSubmit={handleSend} className="border-t border-white/[0.08] bg-[#0d1214] p-3">
-          <label htmlFor="chat-message" className="sr-only">Message</label>
+        <form
+          onSubmit={handleSend}
+          className="border-t border-white/[0.08] bg-[#0d1214] p-3"
+        >
+          <label htmlFor="chat-message" className="sr-only">
+            Message
+          </label>
           <div className="flex items-end gap-2">
             <EmojiPicker
               disabled={!connected}
@@ -385,7 +441,11 @@ export const Chat = ({ isIdle }) => {
               value={text}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={handleComposerKeyDown}
-              placeholder={connected ? 'Message participant…' : 'Chat becomes available when connected'}
+              placeholder={
+                connected
+                  ? 'Message participant…'
+                  : 'Chat becomes available when connected'
+              }
               maxLength={2000}
               rows={1}
               disabled={!connected}
@@ -402,7 +462,10 @@ export const Chat = ({ isIdle }) => {
               <Send className="size-4" />
             </Button>
           </div>
-          <div id="chat-composer-help" className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-zinc-600">
+          <div
+            id="chat-composer-help"
+            className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-zinc-600"
+          >
             <span>Enter to send · Shift+Enter for a new line</span>
             {text.length >= 1800 ? <span>{text.length}/2000</span> : null}
           </div>

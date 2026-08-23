@@ -17,15 +17,14 @@ export const EmojiPicker = ({
   const [query, setQuery] = useState('');
   const searchRef = useRef(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const emojis = (
-    normalizedQuery
-      ? CHAT_EMOJIS.filter(item => (
-          item.label.toLocaleLowerCase().includes(normalizedQuery)
-          || item.keywords.includes(normalizedQuery)
-          || item.emoji.includes(normalizedQuery)
-        ))
-      : CHAT_EMOJIS
-  );
+  const emojis = normalizedQuery
+    ? CHAT_EMOJIS.filter(
+        (item) =>
+          item.label.toLocaleLowerCase().includes(normalizedQuery) ||
+          item.keywords.includes(normalizedQuery) ||
+          item.emoji.includes(normalizedQuery),
+      )
+    : CHAT_EMOJIS;
 
   const handleOpenChange = (nextOpen) => {
     setOpen(nextOpen);
@@ -44,7 +43,11 @@ export const EmojiPicker = ({
         <Button
           variant="ghost"
           size="icon"
-          className={compact ? 'size-7 rounded-lg text-zinc-500 hover:text-zinc-100' : 'size-11'}
+          className={
+            compact
+              ? 'size-7 rounded-lg text-zinc-500 hover:text-zinc-100'
+              : 'size-11'
+          }
           disabled={disabled}
           aria-label={label}
           title={label}
@@ -63,19 +66,23 @@ export const EmojiPicker = ({
         }}
       >
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-zinc-500" />
           <Input
             ref={searchRef}
             value={query}
-            onChange={event => setQuery(event.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             placeholder="Search emoji"
             className="h-9 pl-9 text-xs"
             aria-label="Search emoji"
           />
         </div>
         {emojis.length ? (
-          <div className="mt-2 grid grid-cols-5 gap-1" role="group" aria-label="Emoji choices">
-            {emojis.map(item => (
+          <div
+            className="mt-2 grid grid-cols-5 gap-1"
+            role="group"
+            aria-label="Emoji choices"
+          >
+            {emojis.map((item) => (
               <Button
                 key={item.emoji}
                 variant="ghost"
@@ -89,7 +96,9 @@ export const EmojiPicker = ({
             ))}
           </div>
         ) : (
-          <p className="py-5 text-center text-xs text-zinc-500">No matching emoji</p>
+          <p className="py-5 text-center text-xs text-zinc-500">
+            No matching emoji
+          </p>
         )}
       </PopoverContent>
     </Popover>

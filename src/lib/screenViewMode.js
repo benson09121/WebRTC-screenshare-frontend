@@ -20,17 +20,14 @@ const SCREEN_VIDEO_LAYOUTS = Object.freeze({
   }),
 });
 
-export const normalizeScreenViewMode = mode => (
-  SCREEN_VIEW_MODE_SET.has(mode) ? mode : 'fit'
-);
+export const normalizeScreenViewMode = (mode) =>
+  SCREEN_VIEW_MODE_SET.has(mode) ? mode : 'fit';
 
-export const getScreenVideoLayout = mode => (
-  SCREEN_VIDEO_LAYOUTS[normalizeScreenViewMode(mode)]
-);
+export const getScreenVideoLayout = (mode) =>
+  SCREEN_VIDEO_LAYOUTS[normalizeScreenViewMode(mode)];
 
-export const getNextScreenViewMode = (mode, isScreenView) => (
-  isScreenView ? normalizeScreenViewMode(mode) : 'fit'
-);
+export const getNextScreenViewMode = (mode, isScreenView) =>
+  isScreenView ? normalizeScreenViewMode(mode) : 'fit';
 
 export const getContainedMediaSize = (
   containerWidth,
@@ -38,13 +35,14 @@ export const getContainedMediaSize = (
   aspectRatio,
 ) => {
   if (
-    !Number.isFinite(containerWidth)
-    || !Number.isFinite(containerHeight)
-    || !Number.isFinite(aspectRatio)
-    || containerWidth <= 0
-    || containerHeight <= 0
-    || aspectRatio <= 0
-  ) return null;
+    !Number.isFinite(containerWidth) ||
+    !Number.isFinite(containerHeight) ||
+    !Number.isFinite(aspectRatio) ||
+    containerWidth <= 0 ||
+    containerHeight <= 0 ||
+    aspectRatio <= 0
+  )
+    return null;
 
   const containerAspectRatio = containerWidth / containerHeight;
   if (containerAspectRatio > aspectRatio) {
