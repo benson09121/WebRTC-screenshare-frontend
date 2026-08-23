@@ -6,14 +6,29 @@ let lastProgressAt = 0;
 let resumeAfterUserSeek = false;
 let lastActivityAt = 0;
 
+const sendRuntimeMessage = message => {
+  try {
+    if (!chrome.runtime?.id) return;
+    chrome.runtime.sendMessage(message, () => {
+      try {
+        void chrome.runtime.lastError;
+      } catch {
+        // The extension was reloaded; this old content-script context cannot recover.
+      }
+    });
+  } catch {
+    // The PairBeam tab reload will inject the updated content script.
+  }
+};
+
 const reportUserActivity = () => {
   const now = performance.now();
   if (now - lastActivityAt < 250) return;
   lastActivityAt = now;
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     source: 'vidking-player',
     type: 'user-activity',
-  }, () => void chrome.runtime.lastError);
+  });
 };
 
 window.addEventListener('pointermove', reportUserActivity, { passive: true });
@@ -56,11 +71,11 @@ const snapshot = (eventName, extra = {}) => ({
 });
 
 const report = (eventName, extra) => {
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     source: 'vidking-player',
     type: 'player-event',
     event: snapshot(eventName, extra),
-  }, () => void chrome.runtime.lastError);
+  });
 };
 
 const rememberPlayback = (eventName, extra) => {
@@ -220,11 +235,11 @@ chrome.runtime.onMessage.addListener(message => {
   if (message?.target !== 'vidking-player') return;
   if (message.type === 'command') runCommand(message.command || {});
   if (message.type === 'register-request') {
-    chrome.runtime.sendMessage({ source: 'vidking-player', type: 'register' }, () => void chrome.runtime.lastError);
+    sendRuntimeMessage({ source: 'vidking-player', type: 'register' });
   }
 });
 
-chrome.runtime.sendMessage({ source: 'vidking-player', type: 'register' }, () => void chrome.runtime.lastError);
+sendRuntimeMessage({ source: 'vidking-player', type: 'register' });
 discoverPlayer();
 new MutationObserver(discoverPlayer).observe(document.documentElement, {
   attributes: true,

@@ -67,7 +67,7 @@ const MediaSummary = ({ media }) => {
   );
 };
 
-const ExtensionInstallNotice = ({ compact = false }) => {
+const ExtensionInstallNotice = ({ compact = false, reloadRequired = false }) => {
   const detectedBrowser = detectCurrentExtensionBrowser();
   const target = EXTENSION_TARGETS[detectedBrowser.family] || null;
   const alternateTarget = detectedBrowser.family === 'firefox'
@@ -78,13 +78,15 @@ const ExtensionInstallNotice = ({ compact = false }) => {
     <div className={`flex gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] text-amber-100 ${compact ? 'p-2.5' : 'p-3'}`} role="alert">
       <Puzzle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0">
-        <p className="text-xs font-semibold">PairBeam extension required</p>
+        <p className="text-xs font-semibold">{reloadRequired ? 'Reload PairBeam to reconnect' : 'PairBeam extension required'}</p>
         <p className="mt-1 text-[11px] leading-5 text-amber-100/80">
-          {target && detectedBrowser.supported
+          {reloadRequired
+            ? 'The extension was updated or reloaded while this room tab was open. Reload this tab to attach the new extension context; you do not need to reinstall it.'
+            : target && detectedBrowser.supported
             ? `PairBeam detected ${detectedBrowser.label}. Both participants must load the ${target.browserName} extension and reload the room.`
             : `${detectedBrowser.label} does not support this desktop companion flow. Open PairBeam in desktop Firefox or a Chromium browser.`}
         </p>
-        {!compact && target && detectedBrowser.supported ? (
+        {!reloadRequired && !compact && target && detectedBrowser.supported ? (
           <>
             <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-[11px] leading-5 text-amber-100/80">
               {target.steps.map((step, index) => <li key={index}>{step}</li>)}
@@ -97,7 +99,15 @@ const ExtensionInstallNotice = ({ compact = false }) => {
           </>
         ) : null}
         <div className="mt-2 flex flex-wrap gap-2">
-          {target && detectedBrowser.supported ? (
+          {reloadRequired ? (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-amber-100 px-3 text-xs font-semibold text-amber-950 outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-amber-200"
+            >
+              Reload PairBeam
+            </button>
+          ) : target && detectedBrowser.supported ? (
             <a
               href={target.archiveUrl}
               download={target.downloadName}
@@ -117,7 +127,7 @@ const ExtensionInstallNotice = ({ compact = false }) => {
               </a>
             ))
           )}
-          {!compact && target && detectedBrowser.supported ? (
+          {!reloadRequired && !compact && target && detectedBrowser.supported ? (
             <a
               href={alternateTarget.archiveUrl}
               download={alternateTarget.downloadName}
@@ -156,6 +166,7 @@ export default function ExternalWatchParty({ isIdle }) {
     isFullscreen,
   } = useWebRTC();
   const [extensionDetected, setExtensionDetected] = useState(false);
+  const [extensionReloadRequired, setExtensionReloadRequired] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
   const [playerError, setPlayerError] = useState('');
   const [popupBlocked, setPopupBlocked] = useState(false);
@@ -223,8 +234,10 @@ export default function ExternalWatchParty({ isIdle }) {
         return;
       }
       if (message.type === 'status') {
-        setExtensionDetected(Boolean(message.detected));
+        const detected = Boolean(message.detected);
+        setExtensionDetected(detected);
         setPlayerReady(Boolean(message.playerReady));
+        setExtensionReloadRequired(!detected && message.reloadRequired === true);
         return;
       }
       if (message.type === 'popup-blocked') {
@@ -346,7 +359,7 @@ export default function ExternalWatchParty({ isIdle }) {
           </div>
           <div className="mt-5"><MediaSummary media={externalWatchInvite.media} /></div>
           <p className="mt-4 text-xs leading-5 text-zinc-400">Accepting loads the third-party Vidking embed in your browser. Vidking receives your network request and IP address and may use its own storage or cookies. PairBeam sends playback state, not the movie, to your peer.</p>
-          {!extensionDetected ? <div className="mt-4"><ExtensionInstallNotice /></div> : null}
+          {!extensionDetected ? <div className="mt-4"><ExtensionInstallNotice reloadRequired={extensionReloadRequired} /></div> : null}
           <div className="mt-5 flex justify-end gap-2"><Button variant="ghost" onClick={() => respondExternalWatchProposal(false)}>Decline</Button><Button variant="active" disabled={!extensionDetected} onClick={() => respondExternalWatchProposal(true)}><Check className="size-4" />Accept and open</Button></div>
         </section>
       </div>
@@ -357,7 +370,7 @@ export default function ExternalWatchParty({ isIdle }) {
     return (
       <div className="fixed left-1/2 top-6 z-[90] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-2xl backdrop-blur-xl" role="status" data-idle-exempt="true">
         <div className="flex items-center gap-3"><LoaderCircle className="size-5 shrink-0 animate-spin text-teal-300" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-zinc-100">Waiting for the other participant</p><p className="truncate text-xs text-zinc-500">{outgoingExternalWatchProposal.media.title}{episodeLabel(outgoingExternalWatchProposal.media) ? ` · ${episodeLabel(outgoingExternalWatchProposal.media)}` : ''}</p></div><Button variant="ghost" size="sm" onClick={stopExternalWatch}>Cancel</Button></div>
-        {!extensionDetected ? <div className="mt-3"><ExtensionInstallNotice compact /></div> : null}
+        {!extensionDetected ? <div className="mt-3"><ExtensionInstallNotice compact reloadRequired={extensionReloadRequired} /></div> : null}
       </div>
     );
   }
@@ -396,7 +409,7 @@ export default function ExternalWatchParty({ isIdle }) {
       </div>
       {(!extensionDetected || !playerReady || playerError) ? (
         <div className="pointer-events-auto absolute bottom-24 left-1/2 w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-amber-300/20 bg-amber-950/95 p-3 text-xs leading-5 text-amber-100 shadow-xl">
-          {!extensionDetected ? <ExtensionInstallNotice compact /> : <div className="flex gap-2"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>{playerError || 'The extension is connected and waiting for the Vidking video element. Start the provider player if it remains idle.'}</p></div>}
+          {!extensionDetected ? <ExtensionInstallNotice compact reloadRequired={extensionReloadRequired} /> : <div className="flex gap-2"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>{playerError || 'The extension is connected and waiting for the Vidking video element. Start the provider player if it remains idle.'}</p></div>}
         </div>
       ) : null}
       {popupBlocked ? <div className="pointer-events-none absolute right-4 top-24 rounded-lg border border-teal-300/20 bg-black/80 px-3 py-2 text-xs text-teal-100 shadow-xl" role="status">Blocked a provider popup.</div> : null}

@@ -8,7 +8,9 @@ import {
   normalizeExternalWatchEpisodeRequest,
   normalizeExternalWatchMedia,
   normalizeExternalWatchMediaState,
+  normalizeExternalWatchRecovery,
   normalizeExternalWatchState,
+  shouldPreserveExternalWatchSession,
 } from './externalWatchProtocol.js';
 
 test('creates a bounded Vidking movie proposal and embed URL', () => {
@@ -71,4 +73,40 @@ test('validates synchronized episode requests and authoritative media state', ()
   assert.equal(state.revision, 2);
   assert.equal(state.media.episodeTitle, 'And Now His Watch Is Ended');
   assert.equal(normalizeExternalWatchMediaState({ ...state, revision: 0 }), null);
+});
+
+test('preserves an accepted watch session only for recoverable peer transport resets', () => {
+  const session = { proposalId: 'proposal_123' };
+  assert.equal(shouldPreserveExternalWatchSession('peer-reconnected', session), true);
+  assert.equal(shouldPreserveExternalWatchSession('renegotiation-offer', session), true);
+  assert.equal(shouldPreserveExternalWatchSession('peer-joined-with-active-session', session), true);
+  assert.equal(shouldPreserveExternalWatchSession('peer-left-with-active-session', session), true);
+  assert.equal(shouldPreserveExternalWatchSession('room-error', session), false);
+  assert.equal(shouldPreserveExternalWatchSession('peer-reconnected', null), false);
+});
+
+test('validates bounded watch recovery snapshots for a replacement data channel', () => {
+  const recovery = normalizeExternalWatchRecovery({
+    type: 'external-watch-recovery',
+    proposalId: 'proposal_123',
+    mediaRevision: 0,
+    isAuthority: true,
+    media: {
+      providerId: 'vidking-extension',
+      mediaType: 'movie',
+      tmdbId: 27205,
+      title: 'Inception',
+    },
+    playback: {
+      revision: 7,
+      paused: false,
+      position: 1540.5,
+      duration: 8880,
+    },
+  });
+
+  assert.equal(recovery.playback.position, 1540.5);
+  assert.equal(recovery.playback.proposalId, 'proposal_123');
+  assert.equal(recovery.isAuthority, true);
+  assert.equal(normalizeExternalWatchRecovery({ ...recovery, mediaRevision: -1 }), null);
 });

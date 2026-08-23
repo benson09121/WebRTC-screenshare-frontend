@@ -1,18 +1,52 @@
 const PAGE_CHANNEL = 'pairbeam-page';
 const EXTENSION_CHANNEL = 'pairbeam-extension';
 let watchSessionActive = false;
+let contextInvalidated = false;
 
 const postToPage = payload => {
   window.postMessage({ channel: EXTENSION_CHANNEL, ...payload }, window.location.origin);
 };
 
+const reportInvalidatedContext = () => {
+  if (contextInvalidated) return;
+  contextInvalidated = true;
+  postToPage({
+    type: 'status',
+    detected: false,
+    playerReady: false,
+    reloadRequired: true,
+  });
+};
+
+const sendRuntimeMessage = (message, onResponse) => {
+  try {
+    if (!chrome.runtime?.id) {
+      reportInvalidatedContext();
+      return;
+    }
+    chrome.runtime.sendMessage(message, response => {
+      try {
+        if (chrome.runtime.lastError) {
+          reportInvalidatedContext();
+          return;
+        }
+        contextInvalidated = false;
+        onResponse?.(response);
+      } catch {
+        reportInvalidatedContext();
+      }
+    });
+  } catch {
+    reportInvalidatedContext();
+  }
+};
+
 const register = () => {
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     source: 'pairbeam-bridge',
     type: 'register',
     watchActive: watchSessionActive,
   }, response => {
-    if (chrome.runtime.lastError) return;
     postToPage({ type: 'status', detected: true, playerReady: Boolean(response?.playerReady) });
   });
 };
@@ -28,20 +62,19 @@ window.addEventListener('message', event => {
   }
   if (message.type === 'watch-session' && typeof message.active === 'boolean') {
     watchSessionActive = message.active;
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       source: 'pairbeam-bridge',
       type: 'watch-session',
       active: message.active,
-    }, () => void chrome.runtime.lastError);
+    });
     return;
   }
   if (message.type !== 'command' || !message.command || typeof message.command !== 'object') return;
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     source: 'pairbeam-bridge',
     type: 'command',
     command: message.command,
   }, response => {
-    if (chrome.runtime.lastError) return;
     postToPage({
       type: 'command-result',
       commandId: message.command.commandId || null,

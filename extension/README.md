@@ -35,7 +35,8 @@ The download never includes `extension.pem` or a `.crx` package.
 ## Current scope
 
 - Desktop Chrome/Chromium and Firefox with Vidking movie and exact TV episode embeds are the supported experimental combinations. PairBeam chooses the episode before loading the provider and disables Vidking's internal episode switching for synchronized sessions.
-- The manifest declares both `background.service_worker` for Chromium and `background.scripts` for Firefox, following Mozilla's cross-browser MV3 guidance. Firefox's `chrome.*` callback compatibility keeps one audited bridge implementation across both browsers.
+- The shared bridge code is packaged with separate browser manifests: Chromium gets only `background.service_worker`, while Firefox gets only `background.scripts`. This avoids Chromium rejecting Firefox's background entry and keeps the runtime code audited in one place.
+- If the extension is reloaded while PairBeam is already open, reload the PairBeam tab too. Existing content scripts belong to the old extension context and cannot reconnect themselves after Chrome invalidates that context.
 - Pointer and keyboard activity inside the cross-origin player is forwarded to PairBeam so its fullscreen controls can follow the same 3-second inactivity timer as the rest of the room UI.
 - The person who proposes the title is the playback authority. The other participant's controls become requests that the authority applies and broadcasts back.
 - Autoplay rules can require each participant to press play once.

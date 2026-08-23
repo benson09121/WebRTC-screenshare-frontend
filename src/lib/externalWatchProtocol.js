@@ -128,6 +128,50 @@ export const normalizeExternalWatchState = value => {
   };
 };
 
+export const normalizeExternalWatchRecovery = value => {
+  if (
+    value?.type !== 'external-watch-recovery'
+    || !WATCH_ID_PATTERN.test(value.proposalId || '')
+    || !Number.isSafeInteger(value.mediaRevision)
+    || value.mediaRevision < 0
+    || typeof value.isAuthority !== 'boolean'
+  ) return null;
+
+  const media = normalizeExternalWatchMedia(value.media);
+  if (!media) return null;
+
+  let playback = null;
+  if (value.playback !== null && value.playback !== undefined) {
+    playback = normalizeExternalWatchState({
+      ...value.playback,
+      type: 'external-watch-state',
+      proposalId: value.proposalId,
+      mediaRevision: value.mediaRevision,
+    });
+    if (!playback) return null;
+  }
+
+  return {
+    type: value.type,
+    proposalId: value.proposalId,
+    media,
+    mediaRevision: value.mediaRevision,
+    isAuthority: value.isAuthority,
+    playback,
+  };
+};
+
+const RECOVERABLE_PEER_RESETS = new Set([
+  'peer-left-with-active-session',
+  'peer-joined-with-active-session',
+  'peer-reconnected',
+  'renegotiation-offer',
+]);
+
+export const shouldPreserveExternalWatchSession = (reason, session) => Boolean(
+  session?.proposalId && RECOVERABLE_PEER_RESETS.has(reason),
+);
+
 export const buildVidkingEmbedUrl = media => {
   const normalized = normalizeExternalWatchMedia(media);
   if (!normalized) return null;

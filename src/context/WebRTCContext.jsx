@@ -12,8 +12,10 @@ import {
   normalizeExternalWatchMedia,
   normalizeExternalWatchMediaState,
   normalizeExternalWatchProposal,
+  normalizeExternalWatchRecovery,
   normalizeExternalWatchResponse,
   normalizeExternalWatchState,
+  shouldPreserveExternalWatchSession,
 } from '../lib/externalWatchProtocol';
 import {
   appendUniqueChatMessage,
@@ -60,6 +62,18 @@ const isSameExternalSeries = (session, media) => Boolean(
   && media?.mediaType === 'tv'
   && session.media.providerId === media.providerId
   && session.media.tmdbId === media.tmdbId
+);
+
+const isSameExternalMedia = (left, right) => Boolean(
+  left
+  && right
+  && left.providerId === right.providerId
+  && left.mediaType === right.mediaType
+  && left.tmdbId === right.tmdbId
+  && (left.mediaType !== 'tv' || (
+    left.season === right.season
+    && left.episode === right.episode
+  )),
 );
 
 export const WebRTCProvider = ({ children }) => {
@@ -256,7 +270,11 @@ export const WebRTCProvider = ({ children }) => {
     screenTransceiverRef.current = videoTransceivers[1] || null;
   }, []);
 
-  const resetRemotePeer = useCallback(() => {
+  const resetRemotePeer = useCallback((reason = 'terminal') => {
+    const preserveExternalWatch = shouldPreserveExternalWatchSession(
+      reason,
+      externalWatchSessionRef.current,
+    );
     if (disconnectRecoveryTimerRef.current) {
       window.clearTimeout(disconnectRecoveryTimerRef.current);
       disconnectRecoveryTimerRef.current = null;
@@ -293,10 +311,15 @@ export const WebRTCProvider = ({ children }) => {
     setConnected(false);
     setExternalWatchInvite(null);
     setOutgoingExternalWatchProposal(null);
-    setExternalWatchSession(null);
     setExternalWatchCommand(null);
-    setExternalWatchProposalStatus('idle');
-    externalWatchRevisionRef.current = 0;
+    if (preserveExternalWatch) {
+      setExternalWatchProposalStatus('accepted');
+      console.info('[WebRTC] Rebuilding peer transport while preserving the active watch session.');
+    } else {
+      setExternalWatchSession(null);
+      setExternalWatchProposalStatus('idle');
+      externalWatchRevisionRef.current = 0;
+    }
   }, [setExternalWatchSession, setOutgoingExternalWatchProposal]);
 
   const handleDataMessage = event => {
@@ -502,6 +525,43 @@ export const WebRTCProvider = ({ children }) => {
         setExternalWatchSession({ ...session, playback: state });
         return;
       }
+      if (data.type === 'external-watch-recovery') {
+        const recovery = normalizeExternalWatchRecovery(data);
+        const session = externalWatchSessionRef.current;
+        const remoteShouldBeAuthority = session?.authority === 'remote';
+        if (
+          !recovery
+          || !session
+          || recovery.proposalId !== session.proposalId
+          || recovery.isAuthority !== remoteShouldBeAuthority
+          || recovery.mediaRevision < (session.mediaRevision || 0)
+        ) return;
+
+        let nextSession = session;
+        if (recovery.mediaRevision > (session.mediaRevision || 0)) {
+          if (!remoteShouldBeAuthority || !isSameExternalSeries(session, recovery.media)) return;
+          externalWatchRevisionRef.current = 0;
+          nextSession = {
+            ...session,
+            media: recovery.media,
+            mediaRevision: recovery.mediaRevision,
+            mediaChangedAt: Date.now(),
+            playback: null,
+          };
+        } else if (!isSameExternalMedia(session.media, recovery.media)) {
+          return;
+        }
+
+        if (
+          remoteShouldBeAuthority
+          && recovery.playback
+          && isNewerExternalWatchState(nextSession.playback, recovery.playback)
+        ) {
+          nextSession = { ...nextSession, playback: recovery.playback };
+        }
+        if (nextSession !== session) setExternalWatchSession(nextSession);
+        return;
+      }
       if (data.type === 'external-watch-stop') {
         const session = externalWatchSessionRef.current;
         if (session && data.proposalId === session.proposalId) {
@@ -573,12 +633,24 @@ export const WebRTCProvider = ({ children }) => {
         audioTracks: localShareSourceRef.current?.audioTracks || [],
         selectedAudioTrack: localShareSourceRef.current?.selectedAudioTrack || 0,
       }));
+      const watchSession = externalWatchSessionRef.current;
+      if (watchSession) {
+        const recovery = normalizeExternalWatchRecovery({
+          type: 'external-watch-recovery',
+          proposalId: watchSession.proposalId,
+          media: watchSession.media,
+          mediaRevision: watchSession.mediaRevision || 0,
+          isAuthority: watchSession.authority === 'local',
+          playback: watchSession.playback,
+        });
+        if (recovery) channel.send(JSON.stringify(recovery));
+      }
     };
 
+    dataChannelRef.current = channel;
     channel.onmessage = handleDataMessage;
     channel.onopen = sendInitialState;
     if (channel.readyState === 'open') sendInitialState();
-    dataChannelRef.current = channel;
   };
 
   useEffect(() => {
@@ -613,7 +685,7 @@ export const WebRTCProvider = ({ children }) => {
         setRoomError(msg.message || 'Unable to join that room.');
         setRoomId(null);
       } else if (msg.type === 'peer-left') {
-        resetRemotePeer();
+        resetRemotePeer('peer-left-with-active-session');
         chatMessagesRef.current = [];
         setChatMessages([]);
         setUnreadCount(0);
@@ -627,7 +699,7 @@ export const WebRTCProvider = ({ children }) => {
           setConnected(true);
           setPeerPresence('connected');
         } else {
-          resetRemotePeer();
+          resetRemotePeer('peer-reconnected');
           setPeerPresence('joining');
           try {
             await startCallRef.current?.();
@@ -638,7 +710,7 @@ export const WebRTCProvider = ({ children }) => {
         }
       } else if (msg.type === 'peer-joined') {
         console.log("[Signaling] Peer joined. Initiating call...");
-        resetRemotePeer();
+        resetRemotePeer('peer-joined-with-active-session');
         setPeerPresence('joining');
         try {
           await startCallRef.current?.();
@@ -655,7 +727,7 @@ export const WebRTCProvider = ({ children }) => {
             && pcRef.current
             && pcRef.current.signalingState !== 'closed',
           );
-          if (pcRef.current && !canReuseConnection) resetRemotePeer();
+          if (pcRef.current && !canReuseConnection) resetRemotePeer('renegotiation-offer');
           setPeerPresence('joining');
           if (!canReuseConnection) initPeerConnectionRef.current?.(false);
           const pc = pcRef.current;
@@ -1193,7 +1265,6 @@ export const WebRTCProvider = ({ children }) => {
     if (
       !session
       || session.authority !== 'local'
-      || channel?.readyState !== 'open'
       || (session.mediaChangedAt && Date.now() - session.mediaChangedAt < EXTERNAL_MEDIA_SWITCH_GUARD_MS)
     ) return false;
     const state = normalizeExternalWatchState({
@@ -1207,8 +1278,11 @@ export const WebRTCProvider = ({ children }) => {
     });
     if (!state) return false;
     setExternalWatchSession({ ...session, playback: state });
-    channel.send(JSON.stringify(state));
-    return true;
+    if (channel?.readyState === 'open') {
+      channel.send(JSON.stringify(state));
+      return true;
+    }
+    return false;
   }, [setExternalWatchSession]);
 
   const stopExternalWatch = useCallback(() => {
