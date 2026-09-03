@@ -63,6 +63,31 @@ test('rejects malformed messages and deduplicates retransmitted identities', () 
   assert.equal(appendUniqueChatMessage(once, message), once);
 });
 
+test('preserves a validated ephemeral reply reference', () => {
+  const payload = createChatMessagePayload({
+    clientId: 'local',
+    sequence: 2,
+    text: 'Reply body',
+    replyToId: 'peer:1:0',
+    now: 10,
+  });
+
+  assert.equal(payload.replyToId, 'peer:1:0');
+  assert.equal(
+    normalizeChatMessagePayload(payload, 'remote').replyToId,
+    'peer:1:0',
+  );
+  assert.equal(
+    createChatMessagePayload({
+      clientId: 'local',
+      sequence: 3,
+      text: 'Invalid reply',
+      replyToId: '../bad',
+    }),
+    null,
+  );
+});
+
 test('applies desired reaction state idempotently per participant', () => {
   const message = normalizeChatMessagePayload({
     type: 'chat',

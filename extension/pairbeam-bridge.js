@@ -1,11 +1,17 @@
 const PAGE_CHANNEL = 'pairbeam-page';
 const EXTENSION_CHANNEL = 'pairbeam-extension';
+const EXTENSION_VERSION = chrome.runtime.getManifest?.().version || null;
 let watchSessionActive = false;
 let contextInvalidated = false;
+let playerReady = false;
 
 const postToPage = (payload) => {
   window.postMessage(
-    { channel: EXTENSION_CHANNEL, ...payload },
+    {
+      channel: EXTENSION_CHANNEL,
+      extensionVersion: EXTENSION_VERSION,
+      ...payload,
+    },
     window.location.origin,
   );
 };
@@ -45,6 +51,13 @@ const sendRuntimeMessage = (message, onResponse) => {
 };
 
 const register = () => {
+  // Reaching this content script already proves the extension is installed.
+  // Report that immediately instead of waiting for an MV3 worker to wake.
+  postToPage({
+    type: 'status',
+    detected: true,
+    playerReady,
+  });
   sendRuntimeMessage(
     {
       source: 'pairbeam-bridge',
@@ -52,10 +65,11 @@ const register = () => {
       watchActive: watchSessionActive,
     },
     (response) => {
+      playerReady = Boolean(response?.playerReady);
       postToPage({
         type: 'status',
         detected: true,
-        playerReady: Boolean(response?.playerReady),
+        playerReady,
       });
     },
   );
@@ -105,10 +119,11 @@ window.addEventListener('message', (event) => {
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.target !== 'pairbeam-bridge') return;
   if (message.type === 'status') {
+    playerReady = Boolean(message.playerReady);
     postToPage({
       type: 'status',
       detected: true,
-      playerReady: Boolean(message.playerReady),
+      playerReady,
     });
   }
   if (message.type === 'player-event')

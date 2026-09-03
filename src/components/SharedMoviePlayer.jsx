@@ -67,7 +67,7 @@ export const SharedMoviePlayer = ({
 
   return (
     <section
-      className={`absolute bottom-20 left-1/2 z-30 w-[min(48rem,calc(100vw-1rem))] -translate-x-1/2 rounded-xl border border-white/10 bg-[#111719]/92 p-2.5 shadow-[0_18px_55px_rgba(0,0,0,0.5)] backdrop-blur-2xl transition-[opacity,transform] duration-300 motion-reduce:transition-none ${hidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
+      className={`shared-movie-player absolute bottom-20 left-1/2 z-30 w-[min(48rem,calc(100vw-1rem))] -translate-x-1/2 rounded-xl border border-white/10 bg-[#111719]/92 p-2.5 shadow-[0_18px_55px_rgba(0,0,0,0.5)] backdrop-blur-2xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${hidden ? 'pointer-events-none translate-y-2 opacity-0' : 'translate-y-0 opacity-100'}`}
       aria-label="Shared movie player"
     >
       <div className="flex items-center justify-between gap-3 px-1">

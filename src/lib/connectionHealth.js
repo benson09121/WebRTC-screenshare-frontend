@@ -21,11 +21,13 @@ export const getConnectionHealthPresentation = ({
           : 'Measuring connection'
     : wsStatus === 'reconnecting'
       ? 'Signaling reconnecting'
-      : peerPresence === 'left'
-        ? 'Participant left'
-        : peerPresence === 'joining' || peerPresence === 'reconnecting'
-          ? 'Call reconnecting'
-          : 'Waiting for participant';
+      : peerPresence === 'failed'
+        ? 'Call unavailable'
+        : peerPresence === 'left'
+          ? 'Participant left'
+          : peerPresence === 'joining' || peerPresence === 'reconnecting'
+            ? 'Call reconnecting'
+            : 'Waiting for participant';
 
   let action = null;
   if (!connected) {

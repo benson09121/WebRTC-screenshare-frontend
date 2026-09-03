@@ -7,7 +7,6 @@ import { LandingPage } from './components/LandingPage';
 import { useWebRTC } from './context/useWebRTC';
 import { Check, Copy, Users } from 'lucide-react';
 import { Button } from './components/ui/button';
-import { ConnectionHealth } from './components/ConnectionHealth';
 
 const ExternalWatchParty = React.lazy(
   () => import('./components/ExternalWatchParty'),
@@ -24,13 +23,11 @@ const MainApp = () => {
   } = useWebRTC();
   const [isIdle, setIsIdle] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isConnectionDetailsOpen, setIsConnectionDetailsOpen] = useState(false);
-  const [isFullscreenDashboardOpen, setIsFullscreenDashboardOpen] =
-    useState(false);
 
   useEffect(() => {
     let timeout;
-    const resetIdle = () => {
+    const resetIdle = (event) => {
+      if (event?.target?.closest?.('[data-room-chat="true"]')) return;
       setIsIdle(false);
       clearTimeout(timeout);
       timeout = setTimeout(() => setIsIdle(true), 3000);
@@ -51,7 +48,7 @@ const MainApp = () => {
     };
   }, []);
 
-  const actualIsIdle = isIdle && !isConnectionDetailsOpen;
+  const actualIsIdle = isIdle;
   const roomHeaderHidden = actualIsIdle || isPresentationMode;
 
   const copyRoomLink = async () => {
@@ -69,7 +66,7 @@ const MainApp = () => {
   }
 
   return (
-    <div className="absolute inset-0 flex h-full w-full animate-[fadeIn_0.5s_ease-out] flex-col overflow-hidden bg-black font-sans">
+    <div className="room-shell absolute inset-0 flex h-full w-full animate-[fadeIn_0.5s_ease-out] flex-col overflow-hidden bg-black font-sans">
       {/* Top Bar for Room Info */}
       <header
         className={`pointer-events-none absolute top-4 left-4 z-30 transition-all duration-300 motion-reduce:transition-none sm:top-6 sm:left-6 ${roomHeaderHidden ? '-translate-y-3 opacity-0' : 'translate-y-0 opacity-100'}`}
@@ -98,13 +95,6 @@ const MainApp = () => {
             </span>
           </Button>
         </div>
-        <div className="mt-2">
-          <ConnectionHealth
-            isIdle={actualIsIdle}
-            open={isConnectionDetailsOpen}
-            onOpenChange={setIsConnectionDetailsOpen}
-          />
-        </div>
       </header>
 
       <VideoPlayer isIdle={actualIsIdle} />
@@ -116,12 +106,8 @@ const MainApp = () => {
           <ExternalWatchParty isIdle={actualIsIdle} />
         </React.Suspense>
       ) : null}
-      <ControlPanel
-        isIdle={actualIsIdle}
-        fullscreenDashboardOpen={isFullscreenDashboardOpen}
-        setFullscreenDashboardOpen={setIsFullscreenDashboardOpen}
-      />
-      <Chat isIdle={actualIsIdle} />
+      <ControlPanel isIdle={actualIsIdle} />
+      <Chat />
     </div>
   );
 };

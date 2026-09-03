@@ -1,10 +1,19 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Bell,
   BellOff,
   ChevronDown,
+  Hash,
   MessageSquare,
+  Reply,
   Send,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
@@ -20,13 +29,11 @@ const timeFormatter = new Intl.DateTimeFormat([], {
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
-const MessageReactions = ({ connected, message, onToggle }) => {
+const MessageReactions = ({ connected, message, onReply, onToggle }) => {
   const reactions = getChatReactionSummary(message);
-  const isLocal = message.from === 'local';
-
   return (
     <div
-      className={`mt-1 flex min-h-7 flex-wrap items-center gap-1 ${isLocal ? 'justify-end' : 'justify-start'}`}
+      className="mt-1 flex min-h-7 flex-wrap items-center justify-start gap-1"
       aria-label="Message reactions"
     >
       {reactions.map((reaction) => (
@@ -44,6 +51,16 @@ const MessageReactions = ({ connected, message, onToggle }) => {
         </button>
       ))}
       <div className="flex items-center rounded-lg border border-white/[0.07] bg-[#111719]/95 p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 rounded-lg"
+          onClick={() => onReply(message)}
+          disabled={!connected}
+          aria-label="Reply to message"
+        >
+          <Reply className="size-3.5" />
+        </Button>
         {QUICK_REACTIONS.map((emoji) => (
           <Button
             key={emoji}
@@ -61,7 +78,7 @@ const MessageReactions = ({ connected, message, onToggle }) => {
           compact
           disabled={!connected}
           label="More reactions"
-          align={isLocal ? 'end' : 'start'}
+          align="start"
           onSelect={(emoji) => onToggle(message.id, emoji)}
         />
       </div>
@@ -69,13 +86,11 @@ const MessageReactions = ({ connected, message, onToggle }) => {
   );
 };
 
-export const Chat = ({ isIdle }) => {
+export const Chat = () => {
   const {
     chatMessages,
     connected,
     isChatOpen,
-    isFullscreen,
-    isPresentationMode,
     notificationSoundEnabled,
     sendMessage,
     setIsChatOpen,
@@ -89,6 +104,8 @@ export const Chat = ({ isIdle }) => {
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
   const [announcement, setAnnouncement] = useState('');
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const messagesRef = useRef(null);
   const composerRef = useRef(null);
   const launcherRef = useRef(null);
@@ -96,6 +113,11 @@ export const Chat = ({ isIdle }) => {
   const previousMessageCountRef = useRef(chatMessages.length);
   const wasChatOpenRef = useRef(false);
   const notificationTimerRef = useRef(null);
+  const highlightTimerRef = useRef(null);
+  const messageById = useMemo(
+    () => new Map(chatMessages.map((message) => [message.id, message])),
+    [chatMessages],
+  );
 
   const scrollToLatest = useCallback((behavior = 'smooth') => {
     const messageList = messagesRef.current;
@@ -162,20 +184,31 @@ export const Chat = ({ isIdle }) => {
         event.key === 'Escape' &&
         !event.defaultPrevented &&
         !event.target?.closest?.('[data-chat-emoji-picker="true"]')
-      )
-        setIsChatOpen(false);
+      ) {
+        if (replyingTo) setReplyingTo(null);
+        else setIsChatOpen(false);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isChatOpen, setIsChatOpen]);
+  }, [isChatOpen, replyingTo, setIsChatOpen]);
 
-  useEffect(() => () => window.clearTimeout(notificationTimerRef.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(notificationTimerRef.current);
+      window.clearTimeout(highlightTimerRef.current);
+    },
+    [],
+  );
 
   const handleSend = (event) => {
     event?.preventDefault();
     const message = text.trim();
     if (!message) return;
-    if (sendMessage(message)) setText('');
+    if (sendMessage(message, replyingTo?.id || null)) {
+      setText('');
+      setReplyingTo(null);
+    }
   };
 
   const handleComposerKeyDown = (event) => {
@@ -205,6 +238,23 @@ export const Chat = ({ isIdle }) => {
     });
   };
 
+  const handleReply = (message) => {
+    setReplyingTo(message);
+    window.requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  const jumpToMessage = (messageId) => {
+    const target = document.getElementById(`chat-message-${messageId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedMessageId(messageId);
+    window.clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = window.setTimeout(
+      () => setHighlightedMessageId(null),
+      1600,
+    );
+  };
+
   const handleMessageScroll = (event) => {
     const messageList = event.currentTarget;
     const nearBottom =
@@ -216,11 +266,9 @@ export const Chat = ({ isIdle }) => {
     if (nearBottom) setShowJumpToLatest(false);
   };
 
-  const usesFocusedStage = isFullscreen || isPresentationMode;
   const usesExternalPlayer = Boolean(externalWatchSession);
-  const panelPlacement = usesFocusedStage
-    ? 'inset-x-3 bottom-3 h-[min(58dvh,34rem)] md:inset-y-3 md:left-auto md:right-3 md:h-auto md:w-[min(22rem,32vw)]'
-    : 'inset-x-3 bottom-20 h-[min(66dvh,32rem)] sm:left-auto sm:right-5 sm:w-[22rem]';
+  const panelPlacement =
+    'inset-y-0 right-0 h-full w-full sm:w-[360px] md:w-[340px]';
   const launcherPlacement = usesExternalPlayer
     ? 'right-3 top-1/2 -translate-y-1/2 sm:right-5'
     : 'bottom-20 right-3 sm:bottom-5 sm:right-5';
@@ -228,12 +276,8 @@ export const Chat = ({ isIdle }) => {
     ? 'right-3 top-[calc(50%+3.25rem)] sm:right-5'
     : 'bottom-[8.5rem] right-3 sm:bottom-[4.75rem] sm:right-5';
 
-  const fullscreenChatHidden = isFullscreen && isIdle;
-  const launcherHidden =
-    isChatOpen ||
-    fullscreenChatHidden ||
-    (isIdle && unreadCount === 0 && !isFullscreen);
-  const chatPanelVisible = isChatOpen && !fullscreenChatHidden;
+  const launcherHidden = isChatOpen;
+  const chatPanelVisible = isChatOpen;
 
   return (
     <>
@@ -241,7 +285,7 @@ export const Chat = ({ isIdle }) => {
         ref={launcherRef}
         variant="secondary"
         onClick={() => setIsChatOpen(true)}
-        className={`fixed z-40 border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherPlacement} ${launcherHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+        className={`fixed z-[90] border-white/15 bg-[#111719]/92 shadow-[0_14px_38px_rgba(0,0,0,0.38)] backdrop-blur-xl transition-[opacity,transform] duration-200 motion-reduce:transition-none ${launcherPlacement} ${launcherHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
         aria-label={
           unreadCount > 0
             ? `Open chat, ${unreadCount} unread messages`
@@ -259,9 +303,9 @@ export const Chat = ({ isIdle }) => {
         ) : null}
       </Button>
 
-      {showNotification && !isChatOpen && !fullscreenChatHidden ? (
+      {showNotification && !isChatOpen ? (
         <div
-          className={`fixed z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl ${notificationPlacement}`}
+          className={`fixed z-[100] flex max-w-[calc(100vw-1.5rem)] items-center gap-1 rounded-xl border border-white/10 bg-[#111719]/96 p-1.5 pr-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl ${notificationPlacement}`}
           role="status"
           aria-live="polite"
         >
@@ -294,28 +338,45 @@ export const Chat = ({ isIdle }) => {
         </div>
       ) : null}
 
+      {chatPanelVisible ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-[110] bg-black/55 opacity-100 transition-opacity duration-200 md:hidden"
+          onClick={() => setIsChatOpen(false)}
+          aria-label="Close room chat"
+          tabIndex="-1"
+        />
+      ) : null}
+
       <aside
-        className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111719]/97 shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-[opacity,transform] will-change-transform motion-reduce:transition-none ${panelPlacement} ${chatPanelVisible ? 'translate-y-0 scale-100 opacity-100 duration-[260ms] ease-[cubic-bezier(0.16,1.08,0.3,1)]' : 'pointer-events-none translate-y-3 scale-[0.97] opacity-0 duration-[180ms] ease-out'}`}
+        data-room-chat="true"
+        className={`bg-panel fixed z-[120] flex flex-col overflow-hidden border-l border-white/10 shadow-2xl transition-transform duration-200 ease-out sm:rounded-l-lg ${panelPlacement} ${chatPanelVisible ? 'translate-x-0' : 'translate-x-full'}`}
         role="dialog"
         aria-labelledby="room-chat-title"
         aria-describedby="room-chat-description"
         aria-hidden={!chatPanelVisible}
         inert={!chatPanelVisible}
       >
-        <header className="flex min-h-[4.5rem] items-center justify-between gap-3 border-b border-white/[0.08] px-4">
-          <div className="min-w-0">
-            <h2
-              id="room-chat-title"
-              className="truncate text-sm font-semibold text-zinc-100"
-            >
-              Room chat
-            </h2>
-            <p
-              id="room-chat-description"
-              className="mt-0.5 text-[11px] text-zinc-500"
-            >
-              Peer-to-peer · not saved
-            </p>
+        <header className="flex min-h-16 items-center justify-between gap-3 border-b border-white/[0.08] px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="bg-primary/10 text-primary grid size-9 shrink-0 place-items-center rounded-lg">
+              <Hash className="size-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h2
+                id="room-chat-title"
+                className="text-foreground truncate text-sm font-bold"
+              >
+                room-chat
+              </h2>
+              <p
+                id="room-chat-description"
+                className="text-subtle-foreground mt-0.5 flex items-center gap-1 text-[11px]"
+              >
+                <ShieldCheck className="size-3" aria-hidden="true" />
+                Private to this room
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -356,7 +417,7 @@ export const Chat = ({ isIdle }) => {
           <ol
             ref={messagesRef}
             onScroll={handleMessageScroll}
-            className="custom-scrollbar h-full space-y-3 overflow-y-auto px-4 py-4"
+            className="custom-scrollbar h-full space-y-1 overflow-y-auto px-2 py-4"
             aria-label="Chat messages"
           >
             {chatMessages.length === 0 ? (
@@ -375,33 +436,66 @@ export const Chat = ({ isIdle }) => {
             ) : (
               chatMessages.map((message) => {
                 const isLocal = message.from === 'local';
+                const repliedTo = message.replyToId
+                  ? messageById.get(message.replyToId)
+                  : null;
                 return (
                   <li
                     key={message.id}
-                    className={`group flex ${isLocal ? 'justify-end' : 'justify-start'}`}
+                    id={`chat-message-${message.id}`}
+                    className={`group hover:bg-panel-raised/70 focus-within:bg-panel-raised/70 flex items-start gap-3 rounded-lg px-2 py-2 transition-colors duration-150 ${highlightedMessageId === message.id ? 'bg-primary/10 ring-primary/25 ring-1' : ''}`}
                   >
                     <div
-                      className={`max-w-[86%] ${isLocal ? 'text-right' : 'text-left'}`}
+                      className={`grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold ${isLocal ? 'bg-primary text-primary-foreground' : 'bg-indigo-400/20 text-indigo-200 ring-1 ring-indigo-300/20 ring-inset'}`}
                     >
-                      <div
-                        className={`rounded-2xl px-3.5 py-2.5 text-left text-sm leading-5 break-words whitespace-pre-wrap ${isLocal ? 'rounded-br-md bg-teal-300 text-[#07100f]' : 'rounded-bl-md border border-white/[0.08] bg-white/[0.065] text-zinc-200'}`}
-                      >
+                      {isLocal ? 'Y' : 'P'}
+                    </div>
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-foreground text-sm font-bold">
+                          {isLocal ? 'You' : 'Participant'}
+                        </span>
+                        {message.sentAt ? (
+                          <time
+                            dateTime={new Date(message.sentAt).toISOString()}
+                            className="text-muted-foreground text-xs"
+                          >
+                            {timeFormatter.format(message.sentAt)}
+                          </time>
+                        ) : null}
+                      </div>
+                      {message.replyToId ? (
+                        repliedTo ? (
+                          <button
+                            type="button"
+                            onClick={() => jumpToMessage(repliedTo.id)}
+                            className="mt-1.5 block max-w-full border-l-2 border-zinc-600 pl-2 text-left outline-none hover:border-teal-300 focus-visible:border-teal-300 focus-visible:ring-2 focus-visible:ring-teal-300"
+                            aria-label={`Jump to message from ${repliedTo.from === 'local' ? 'You' : 'Participant'}`}
+                          >
+                            <span className="block text-[11px] font-semibold text-zinc-400">
+                              {repliedTo.from === 'local'
+                                ? 'You'
+                                : 'Participant'}
+                            </span>
+                            <span className="block max-w-[28rem] truncate text-xs text-zinc-500">
+                              {repliedTo.text}
+                            </span>
+                          </button>
+                        ) : (
+                          <p className="mt-1.5 border-l-2 border-zinc-700 pl-2 text-xs text-zinc-600">
+                            Original message unavailable
+                          </p>
+                        )
+                      ) : null}
+                      <div className="text-foreground/90 mt-0.5 text-[15px] leading-5 break-words whitespace-pre-wrap">
                         {message.text}
                       </div>
                       <MessageReactions
                         connected={connected}
                         message={message}
+                        onReply={handleReply}
                         onToggle={toggleMessageReaction}
                       />
-                      {message.sentAt ? (
-                        <time
-                          dateTime={new Date(message.sentAt).toISOString()}
-                          className="mt-1 block px-1 text-[10px] text-zinc-600"
-                        >
-                          {isLocal ? 'You · ' : 'Participant · '}
-                          {timeFormatter.format(message.sentAt)}
-                        </time>
-                      ) : null}
                     </div>
                   </li>
                 );
@@ -424,12 +518,36 @@ export const Chat = ({ isIdle }) => {
 
         <form
           onSubmit={handleSend}
-          className="border-t border-white/[0.08] bg-[#0d1214] p-3"
+          className="bg-panel border-t border-white/[0.06] px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
+          {replyingTo ? (
+            <div className="bg-panel-raised mb-2 flex items-center gap-3 rounded-lg border border-white/[0.08] px-3 py-2">
+              <Reply className="size-4 shrink-0 text-teal-300" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold text-zinc-300">
+                  Replying to{' '}
+                  {replyingTo.from === 'local' ? 'yourself' : 'Participant'}
+                </p>
+                <p className="truncate text-xs text-zinc-500">
+                  {replyingTo.text}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => setReplyingTo(null)}
+                aria-label="Cancel reply"
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          ) : null}
           <label htmlFor="chat-message" className="sr-only">
             Message
           </label>
-          <div className="flex items-end gap-2">
+          <div className="bg-panel-raised focus-within:border-primary/30 focus-within:ring-focus/35 flex items-end gap-1 rounded-lg border border-white/[0.07] p-1 focus-within:ring-2">
             <EmojiPicker
               disabled={!connected}
               label="Add emoji to message"
@@ -449,13 +567,13 @@ export const Chat = ({ isIdle }) => {
               maxLength={2000}
               rows={1}
               disabled={!connected}
-              className="max-h-28 min-h-11 resize-none"
+              className="max-h-28 min-h-11 resize-none border-0 bg-transparent px-2.5 shadow-none focus-visible:bg-transparent focus-visible:ring-0"
               aria-describedby="chat-composer-help"
             />
             <Button
               type="submit"
               size="icon"
-              className="size-11"
+              className="size-11 rounded-lg"
               disabled={!connected || !text.trim()}
               aria-label="Send message"
             >

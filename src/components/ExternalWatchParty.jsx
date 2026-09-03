@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   ExternalLink,
+  Ellipsis,
   Film,
   LoaderCircle,
   Maximize,
@@ -11,9 +12,12 @@ import {
   X,
 } from 'lucide-react';
 import { useWebRTC } from '../context/useWebRTC';
-import { buildVidkingEmbedUrl } from '../lib/externalWatchProtocol';
+import { buildExternalWatchEmbedUrl } from '../lib/externalWatchProtocol';
+import { getExternalWatchProvider } from '../lib/externalWatchProviders';
+import { getRoomLayoutState } from '../lib/roomLayout';
 import { detectCurrentExtensionBrowser } from '../lib/extensionBrowser';
 import { Button } from './ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import chromiumExtensionArchiveUrl from '../../pairbeam-extension.zip?url&no-inline';
 import firefoxExtensionArchiveUrl from '../../pairbeam-firefox-extension.zip?url&no-inline';
 import { SeriesEpisodeDrawer } from './SeriesEpisodeDrawer';
@@ -31,6 +35,7 @@ const PUBLISH_EVENTS = new Set([
 ]);
 const REQUEST_EVENTS = new Set(['play', 'pause', 'seeked']);
 const SEEK_SETTLE_DELAY_MS = 900;
+const REQUIRED_EXTENSION_VERSION = '0.5.1';
 const EXTENSION_GUIDE_URL =
   'https://github.com/benson09121/WebRTC-screenshare-frontend/tree/main/extension';
 const EXTENSION_TARGETS = {
@@ -47,7 +52,8 @@ const EXTENSION_TARGETS = {
         Choose <strong>Load unpacked</strong>.
       </>,
       <>
-        Select the extracted <code>extension</code> folder.
+        Select the extracted folder that directly contains{' '}
+        <code>manifest.json</code>.
       </>,
       <>Reload PairBeam after installation.</>,
     ],
@@ -72,6 +78,18 @@ const EXTENSION_TARGETS = {
   },
 };
 
+const supportsExtensionVersion = (version) => {
+  if (typeof version !== 'string') return false;
+  const current = version.split('.').map(Number);
+  const required = REQUIRED_EXTENSION_VERSION.split('.').map(Number);
+  if (current.some((part) => !Number.isSafeInteger(part))) return false;
+  for (let index = 0; index < required.length; index += 1) {
+    if ((current[index] || 0) > required[index]) return true;
+    if ((current[index] || 0) < required[index]) return false;
+  }
+  return true;
+};
+
 const posterUrl = (path) =>
   path
     ? `https://image.tmdb.org/t/p/w342${path.startsWith('/') ? path : `/${path}`}`
@@ -84,6 +102,8 @@ const episodeLabel = (media) =>
 
 const MediaSummary = ({ media }) => {
   const selectedEpisode = episodeLabel(media);
+  const provider = getExternalWatchProvider(media?.providerId);
+  const providerLabel = `${provider?.name || 'Provider'} sync prototype · no media relay`;
   return (
     <div className="flex min-w-0 items-center gap-3">
       <div className="grid h-16 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.06] text-zinc-600">
@@ -102,12 +122,10 @@ const MediaSummary = ({ media }) => {
           {media?.title}
         </p>
         <p className="mt-1 truncate text-xs text-zinc-400">
-          {selectedEpisode || 'Vidking sync prototype · no media relay'}
+          {selectedEpisode || providerLabel}
         </p>
         {selectedEpisode ? (
-          <p className="mt-0.5 text-[10px] text-zinc-600">
-            Vidking sync prototype · no media relay
-          </p>
+          <p className="mt-0.5 text-[10px] text-zinc-600">{providerLabel}</p>
         ) : null}
       </div>
     </div>
@@ -117,6 +135,7 @@ const MediaSummary = ({ media }) => {
 const ExtensionInstallNotice = ({
   compact = false,
   reloadRequired = false,
+  upgradeRequired = false,
 }) => {
   const detectedBrowser = detectCurrentExtensionBrowser();
   const target = EXTENSION_TARGETS[detectedBrowser.family] || null;
@@ -135,14 +154,18 @@ const ExtensionInstallNotice = ({
         <p className="text-xs font-semibold">
           {reloadRequired
             ? 'Reload PairBeam to reconnect'
-            : 'PairBeam extension required'}
+            : upgradeRequired
+              ? 'PairBeam extension update required'
+              : 'PairBeam extension required'}
         </p>
         <p className="mt-1 text-[11px] leading-5 text-amber-100/80">
           {reloadRequired
             ? 'The extension was updated or reloaded while this room tab was open. Reload this tab to attach the new extension context; you do not need to reinstall it.'
-            : target && detectedBrowser.supported
-              ? `PairBeam detected ${detectedBrowser.label}. Both participants must load the ${target.browserName} extension and reload the room.`
-              : `${detectedBrowser.label} does not support this desktop companion flow. Open PairBeam in desktop Firefox or a Chromium browser.`}
+            : upgradeRequired
+              ? `This room needs PairBeam Watch Sync ${REQUIRED_EXTENSION_VERSION} or newer for provider selection. Download the current package, replace or reload the installed extension, then reload this tab.`
+              : target && detectedBrowser.supported
+                ? `PairBeam detected ${detectedBrowser.label}. Both participants must load the ${target.browserName} extension and reload the room.`
+                : `${detectedBrowser.label} does not support this desktop companion flow. Open PairBeam in desktop Firefox or a Chromium browser.`}
         </p>
         {!reloadRequired && !compact && target && detectedBrowser.supported ? (
           <>
@@ -215,6 +238,16 @@ const ExtensionInstallNotice = ({
   );
 };
 
+const ExtensionCheckNotice = ({ compact = false }) => (
+  <div
+    className={`flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 text-zinc-300 ${compact ? 'p-2.5' : 'p-3'}`}
+    role="status"
+  >
+    <LoaderCircle className="size-4 shrink-0 animate-spin text-teal-300" />
+    <p className="text-xs">Checking the PairBeam extension…</p>
+  </div>
+);
+
 export default function ExternalWatchParty({ isIdle }) {
   const {
     externalWatchInvite,
@@ -229,9 +262,14 @@ export default function ExternalWatchParty({ isIdle }) {
     stopExternalWatch,
     isChatOpen,
     isFullscreen,
+    isPresentationMode,
+    selectedStageView,
   } = useWebRTC();
   const [extensionDetected, setExtensionDetected] = useState(false);
+  const [extensionCheckComplete, setExtensionCheckComplete] = useState(false);
   const [extensionReloadRequired, setExtensionReloadRequired] = useState(false);
+  const [extensionUpgradeRequired, setExtensionUpgradeRequired] =
+    useState(false);
   const [playerReady, setPlayerReady] = useState(false);
   const [playerError, setPlayerError] = useState('');
   const [popupBlocked, setPopupBlocked] = useState(false);
@@ -310,9 +348,13 @@ export default function ExternalWatchParty({ isIdle }) {
         return;
       }
       if (message.type === 'status') {
+        setExtensionCheckComplete(true);
         const detected = Boolean(message.detected);
-        setExtensionDetected(detected);
-        setPlayerReady(Boolean(message.playerReady));
+        const versionSupported =
+          detected && supportsExtensionVersion(message.extensionVersion);
+        setExtensionDetected(versionSupported);
+        setExtensionUpgradeRequired(detected && !versionSupported);
+        setPlayerReady(versionSupported && Boolean(message.playerReady));
         setExtensionReloadRequired(
           !detected && message.reloadRequired === true,
         );
@@ -392,9 +434,14 @@ export default function ExternalWatchParty({ isIdle }) {
       );
     ping();
     const interval = window.setInterval(ping, 1500);
+    const detectionTimer = window.setTimeout(
+      () => setExtensionCheckComplete(true),
+      2500,
+    );
     return () => {
       window.removeEventListener('message', onMessage);
       window.clearInterval(interval);
+      window.clearTimeout(detectionTimer);
       window.clearTimeout(popupNoticeTimerRef.current);
       popupNoticeTimerRef.current = null;
       clearExternalSeekTimers();
@@ -471,6 +518,9 @@ export default function ExternalWatchParty({ isIdle }) {
   }, [externalWatchSession, sendBridgeCommand]);
 
   if (externalWatchInvite) {
+    const inviteProvider = getExternalWatchProvider(
+      externalWatchInvite.media.providerId,
+    );
     return (
       <div
         className="fixed inset-0 z-[90] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
@@ -507,15 +557,20 @@ export default function ExternalWatchParty({ isIdle }) {
             <MediaSummary media={externalWatchInvite.media} />
           </div>
           <p className="mt-4 text-xs leading-5 text-zinc-400">
-            Accepting loads the third-party Vidking embed in your browser.
-            Vidking receives your network request and IP address and may use its
-            own storage or cookies. PairBeam sends playback state, not the
-            movie, to your peer.
+            Accepting loads the third-party {inviteProvider?.name || 'provider'}
+            {' embed'} in your browser. The provider receives your network
+            request and IP address and may use its own storage or cookies.
+            PairBeam sends playback state, not the movie, to your peer.
           </p>
-          {!extensionDetected ? (
+          {!extensionCheckComplete ? (
+            <div className="mt-4">
+              <ExtensionCheckNotice />
+            </div>
+          ) : !extensionDetected ? (
             <div className="mt-4">
               <ExtensionInstallNotice
                 reloadRequired={extensionReloadRequired}
+                upgradeRequired={extensionUpgradeRequired}
               />
             </div>
           ) : null}
@@ -528,7 +583,7 @@ export default function ExternalWatchParty({ isIdle }) {
             </Button>
             <Button
               variant="active"
-              disabled={!extensionDetected}
+              disabled={!extensionCheckComplete || !extensionDetected}
               onClick={() => respondExternalWatchProposal(true)}
             >
               <Check className="size-4" />
@@ -564,11 +619,16 @@ export default function ExternalWatchParty({ isIdle }) {
             Cancel
           </Button>
         </div>
-        {!extensionDetected ? (
+        {!extensionCheckComplete ? (
+          <div className="mt-3">
+            <ExtensionCheckNotice compact />
+          </div>
+        ) : !extensionDetected ? (
           <div className="mt-3">
             <ExtensionInstallNotice
               compact
               reloadRequired={extensionReloadRequired}
+              upgradeRequired={extensionUpgradeRequired}
             />
           </div>
         ) : null}
@@ -601,69 +661,99 @@ export default function ExternalWatchParty({ isIdle }) {
     );
   }
 
-  const embedUrl = buildVidkingEmbedUrl(externalWatchSession.media);
+  const activeProvider = getExternalWatchProvider(
+    externalWatchSession.media.providerId,
+  );
+  const embedUrl = buildExternalWatchEmbedUrl(externalWatchSession.media);
   const externalControlsHidden = isFullscreen && isIdle;
+  const { showParticipantDock } = getRoomLayoutState({
+    hasExternalWatchSession: true,
+    isPresentationMode,
+  });
+  const isPlayerFocused = selectedStageView === 'external-watch';
   return (
     <section
-      className={`absolute inset-0 z-10 overflow-hidden bg-black ${isChatOpen && isFullscreen && !isIdle ? 'external-watch--chat-docked' : ''}`}
+      className={`absolute inset-0 z-10 overflow-hidden bg-black transition-opacity duration-200 motion-reduce:transition-none ${isPlayerFocused ? 'visible opacity-100' : 'pointer-events-none invisible opacity-0'} ${isChatOpen ? 'external-watch--chat-docked' : ''} ${showParticipantDock ? 'shared-stage-with-participants' : ''}`}
       aria-label={`Watching ${externalWatchSession.media.title}`}
       data-idle-exempt="true"
     >
-      <iframe
-        title={`Vidking player for ${externalWatchSession.media.title}`}
-        src={embedUrl}
-        className="size-full border-0 bg-black"
-        allow="autoplay; picture-in-picture; encrypted-media"
-        referrerPolicy="no-referrer"
-      />
+      <div className="shared-content-viewport">
+        <iframe
+          title={`${activeProvider?.name || 'Provider'} player for ${externalWatchSession.media.title}`}
+          src={embedUrl}
+          className="size-full border-0 bg-black"
+          allow="autoplay; picture-in-picture; encrypted-media"
+          referrerPolicy={activeProvider?.referrerPolicy || 'no-referrer'}
+        />
+      </div>
       <SeriesEpisodeDrawer
         media={externalWatchSession.media}
         onSelect={selectExternalWatchEpisode}
         hidden={externalControlsHidden}
       />
       <div
-        className={`absolute top-4 right-4 z-50 flex gap-2 transition-opacity duration-200 ease-out motion-reduce:transition-none sm:top-6 sm:right-6 ${externalControlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+        className={`absolute top-4 right-4 z-50 transition-opacity duration-200 ease-out motion-reduce:transition-none sm:top-6 sm:right-6 ${externalControlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
         aria-hidden={externalControlsHidden}
         inert={externalControlsHidden}
       >
-        <Button
-          variant="secondary"
-          size="sm"
-          className="h-9"
-          onClick={toggleExternalFullscreen}
-          aria-label={
-            isFullscreen
-              ? 'Exit PairBeam fullscreen'
-              : 'Open PairBeam fullscreen'
-          }
-        >
-          {isFullscreen ? (
-            <Minimize className="size-4" />
-          ) : (
-            <Maximize className="size-4" />
-          )}
-          <span className="hidden sm:inline">
-            {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </span>
-        </Button>
-        <Button variant="secondary" size="sm" onClick={stopExternalWatch}>
-          <X className="size-4" />
-          Stop watching
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="bg-black/65 backdrop-blur-xl"
+              aria-label="Player options"
+            >
+              <Ellipsis className="size-5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-60 p-2">
+            <p className="truncate px-3 py-2 text-xs font-semibold text-zinc-400">
+              {externalWatchSession.media.title}
+            </p>
+            <Button
+              variant="ghost"
+              className="h-10 w-full justify-start gap-2 px-3"
+              onClick={toggleExternalFullscreen}
+            >
+              {isFullscreen ? (
+                <Minimize className="size-4" />
+              ) : (
+                <Maximize className="size-4" />
+              )}
+              {isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            </Button>
+            <div className="my-1 border-t border-white/10" />
+            <Button
+              variant="ghost"
+              className="text-danger h-10 w-full justify-start gap-2 px-3 hover:text-red-300"
+              onClick={stopExternalWatch}
+            >
+              <X className="size-4" />
+              Stop watching
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
-      {!extensionDetected || !playerReady || playerError ? (
+      {!extensionCheckComplete ||
+      !extensionDetected ||
+      !playerReady ||
+      playerError ? (
         <div className="pointer-events-auto absolute bottom-24 left-1/2 w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-amber-300/20 bg-amber-950/95 p-3 text-xs leading-5 text-amber-100 shadow-xl">
-          {!extensionDetected ? (
+          {!extensionCheckComplete ? (
+            <ExtensionCheckNotice compact />
+          ) : !extensionDetected ? (
             <ExtensionInstallNotice
               compact
               reloadRequired={extensionReloadRequired}
+              upgradeRequired={extensionUpgradeRequired}
             />
           ) : (
             <div className="flex gap-2">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <p>
                 {playerError ||
-                  'The extension is connected and waiting for the Vidking video element. Start the provider player if it remains idle.'}
+                  `The extension is connected and waiting for the ${activeProvider?.name || 'provider'} video element. Start the provider player if it remains idle.`}
               </p>
             </div>
           )}

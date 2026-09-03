@@ -10,8 +10,13 @@ export const PopoverContent = React.forwardRef(function PopoverContent(
   { className, align = 'center', sideOffset = 10, ...props },
   ref,
 ) {
+  const fullscreenContainer =
+    typeof document === 'undefined'
+      ? undefined
+      : document.fullscreenElement || undefined;
+
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={fullscreenContainer}>
       <PopoverPrimitive.Content
         ref={ref}
         align={align}

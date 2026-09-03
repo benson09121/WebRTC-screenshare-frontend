@@ -10,7 +10,7 @@ This document outlines the UI behaviors and conditions implemented.
 ## 2. Auto-hide Control Panel
 
 - **Condition:** Triggers after 3 seconds without pointer, click, or keyboard activity anywhere on the screen.
-- **Behavior:** Outside fullscreen, the bottom Control Panel fades out and translates downward. In fullscreen, all PairBeam chrome fades out and becomes non-interactive together: the open chat panel or chat launcher, left episode arrow, bottom dashboard and its down-arrow handle, Fullscreen, and Stop watching. A hidden docked chat panel releases its reserved stage width. Any activity restores the chrome and restarts the timer; the companion extension forwards activity from the cross-origin provider iframe, whose DOM events cannot reach the parent page directly.
+- **Behavior:** The dashboard may fade after three seconds of inactivity and returns on pointer, keyboard, or forwarded provider activity. The participant/content dock and Chat launcher remain reachable while idle, including in fullscreen. Only explicit focus mode hides the dock. There is no separate dashboard reveal handle. An already open chat stays open until the user closes it, and activity inside chat remains scoped to chat.
 
 ## 3. Fullscreen Constraints
 
@@ -22,22 +22,25 @@ This document outlines the UI behaviors and conditions implemented.
 - **Condition:** When the user initiates a screen share.
 - **Behavior:** The `mainStream` intelligently prioritizes the `localScreenStream`, meaning the user who is sharing their screen will actually see their own shared screen in the main view.
 
-## 5. Draggable In-Page Camera Previews
+## 5. Shared-Content Participant Dock
 
-- **Condition:** Active for the local camera preview and for the participant camera shown over a selected screen share or external watch provider.
-- **Behavior:** Uses `framer-motion` dragging constrained to the call stage, keeps the participant preview above shared/external media, and disables drag momentum. Dragging only repositions the preview; it never changes the selected main view. Focus and desktop Picture-in-Picture are separate explicit buttons.
+- **Condition:** Active below a selected local/remote screen, shared movie, or external watch provider whenever presentation mode is off.
+- **Behavior:** Keeps labeled shared-content, `Participant`, and `You` tiles in a compact bottom dock that is visually separate from the selected content. Activating any tile focuses that source locally and marks it with a teal selected state; there is no duplicate view-switch toolbar. Camera-off tiles retain selectable avatar placeholders. Secondary actions live behind one ellipsis button per tile.
+- **Focus control:** Keep one down-arrow at the trailing edge of the dock itself. It must not share the dashboard's bottom-center anchor. Focus mode hides the dock; a persistent restore arrow exits focus mode.
+- **Reserved viewport:** While the dock is present, render native screen shares, uploaded/direct-link movies, focused cameras, and external provider iframes inside one shared-content viewport whose bottom edge clears both the dashboard and dock. Recalculate fitted movie dimensions from that viewport, not the full browser stage. Removing the dock in focus mode restores the full available stage.
 
 ## 6. Fullscreen Auto-hide (Global Idle State)
 
 - **Condition:** Triggers 3 seconds after no mouse movement while in Fullscreen mode.
-- **Behavior:** Hides the main Control Panel, the Fullscreen toggle buttons, the top Room Information bar, and all in-page camera previews. The screen becomes entirely devoted to the shared stream. Chat remains interactive, but pointer movement and typing inside it do not wake the underlying media controls.
+- **Behavior:** Hides the main Control Panel, Fullscreen controls, and top Room Information bar. The participant/content dock and Chat launcher remain visible while idle; only explicit focus mode hides the dock. An open chat remains interactive, but pointer movement and typing inside it do not wake the underlying media controls.
 
 ## 7. Fullscreen Chat Accessibility
 
 - **Condition:** The participant opens Chat while a screen share is fullscreen.
-- **Behavior:** Chat opens as a narrow docked rail on wide screens, reserving layout space so it does not cover the shared content. On narrow screens it becomes a bounded bottom sheet. Closing Chat returns the shared view to its full available size.
-- **Ordinary room:** Outside fullscreen and presentation mode, chat overlays the stage and does not resize or shift the video. During external-provider playback, its launcher sits at the right-center instead of covering the provider's bottom-right controls.
+- **Behavior:** Chat opens as a 340px docked rail on wide screens, reserving layout space so it does not cover shared content or camera tiles. On narrow screens it becomes a full-width right drawer over a dismissible scrim. Closing Chat returns the stage to its full available width.
+- **Ordinary room:** The same responsive behavior applies to camera calls, native shared content, and external providers. During external-provider playback, the closed launcher sits at the right-center instead of covering the provider's bottom-right controls.
 - **Keyboard behavior:** The launcher and close control are keyboard reachable; `Enter` sends, `Shift+Enter` inserts a newline, `Escape` closes the panel, and new messages are announced through a polite live region.
+- **Replies:** A reply action selects one existing message, shows a cancellable composer preview, and sends only its validated message ID with the new message. Render a one-level quoted preview; activating it scrolls to and briefly highlights the original. If it is unavailable, show a restrained fallback. Reply state remains ephemeral and database-free.
 
 ## 8. Chat Notifications
 
@@ -52,7 +55,7 @@ This document outlines the UI behaviors and conditions implemented.
 ## 9. Simultaneous Screen Shares
 
 - **Condition:** Either or both participants are sharing a screen.
-- **Behavior:** A `Viewing` switch appears with `Participant`, `Their screen`, and `Your screen` when each source is available.
+- **Behavior:** Available sources appear as dock tiles for `Participant`, `You`, `Their screen/movie`, `Your screen/movie`, or the synchronized provider. Activating a tile makes it the main stage; the old `Viewing` switch is removed.
 - **Media readiness:** A remote share is offered as a view only after its negotiated video stream exists; a status message alone never moves the viewer into a permanent loading screen.
 - **Local choice:** Selecting a source changes only the current user's main view. It never changes the other participant's layout.
 - **New local share:** Starting your own share selects `Your screen` so the selected source can be verified.
@@ -72,7 +75,7 @@ This document outlines the UI behaviors and conditions implemented.
 ## 11. Component System
 
 - **Foundation:** Tailwind CSS v4 with local shadcn-style components backed by Radix UI primitives.
-- **Current primitives:** Button, Input, Textarea, Tabs, Tooltip, and Popover, all backed by semantic canvas, panel, foreground, muted, border, primary, destructive, and focus tokens.
+- **Current primitives:** Button, Input, Textarea, Tabs, Tooltip, and Popover, all backed by semantic canvas, panel, foreground, muted, border, primary, destructive, and focus tokens. Stage sizing and per-tile actions use compact Popovers instead of adding another persistent toolbar.
 - **Accessibility:** Icon buttons have accessible names, tabs support keyboard navigation, controls use visible focus rings, and dynamic waiting/error states use live regions.
 
 ## 12. Connection Health
@@ -81,6 +84,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **Summary:** Show round-trip time, interval packet loss, sending and receiving bitrate, actual video dimensions/FPS, available upload bandwidth, and direct/relay path.
 - **Actionable states:** Packet loss and round-trip time determine transport health. Browser `qualityLimitationReason` values are displayed separately as device/CPU, upload-bandwidth, or other video adaptation so local encoder pressure is not mislabeled as a failing connection.
 - **Rendering:** Cumulative counters stay outside React state; only the summarized health snapshot updates the interface.
+- **Dashboard indicator:** Render connection health inside the call dashboard as three ascending bars: three green for good, two amber for limited, one red for poor, and gray pulsing bars while measuring. Activating the bars opens the full metrics Popover.
 
 ## 13. Signaling Recovery and Presence
 
@@ -118,16 +122,16 @@ This document outlines the UI behaviors and conditions implemented.
 ## 17. Presentation and Screen Sizing
 
 - **Availability:** Presentation mode and screen-sizing controls appear only while a local or remote screen is selected as the main view.
-- **Presentation mode:** Hide the room header, source selector, camera previews, bottom call controls, and secondary video actions. Keep room chat available and retain an explicit “Exit focus” control that never becomes noninteractive.
+- **Presentation mode:** A compact down-arrow above the dock hides the room header, dock, bottom call controls, and secondary video actions. Keep room chat available and retain an up-arrow restore control that never becomes noninteractive.
 - **Share end:** If the selected screen ends and the view falls back to the participant camera, presentation mode exits automatically.
-- **Chat:** In presentation mode, use the same responsive chat behavior as fullscreen: a docked rail that reserves stage width on larger screens and a bounded bottom sheet on narrow screens.
+- **Chat:** In presentation mode, use the same responsive chat behavior as fullscreen: a docked rail that reserves stage width on larger screens and a full-width right drawer on narrow screens.
 - **Escape priority:** When chat is open, Escape closes chat first. When chat is closed, Escape exits presentation mode. Browser fullscreen remains controlled by the browser's fullscreen behavior.
 - **Fit:** Preserve the source's natural display aspect ratio so the complete shared surface remains visible with symmetrical black letterboxing or pillarboxing.
 - **Crop:** Use `object-cover` only when the user explicitly chooses to fill the stage; edges may be cropped when aspect ratios differ.
 - **100%:** Render the video at its decoded intrinsic dimensions with no CSS downscaling. Place it in a two-axis scrollable viewport so oversized screens can be panned without clipping inaccessible edges.
 - **Shared-content background:** Screen shares and shared movies use true black (`#000`) behind the media in normal, presentation, and fullscreen modes.
 - **Source changes:** Reset sizing to Fit when the selected local/remote source changes or no screen remains.
-- **Accessibility:** Use keyboard-navigable Tabs for sizing, `aria-pressed` for presentation state, visible focus rings, and a polite live region for mode changes.
+- **Accessibility:** Use keyboard-operable menu actions for sizing, `aria-pressed` on selected media tiles, visible focus rings, and a polite live region for mode changes.
 
 ## 18. Error Banner Lifetime
 
@@ -164,12 +168,12 @@ This document outlines the UI behaviors and conditions implemented.
 ## 21. External watch-provider gate
 
 - **Required contract:** A production provider adapter must declare one exact HTTPS origin, production approval, readiness/state/time/duration capabilities, inbound play/pause/seek capabilities, and the `buildEmbedUrl`, `load`, `play`, `pause`, `seek`, `subscribe`, and `destroy` lifecycle methods.
-- **Current result:** Vidking is not remotely controllable from an ordinary cross-origin PairBeam page, so the experimental cross-browser MV3 extension supplies the local player bridge after explicit installation and viewer consent. One bridge codebase is packaged with separate manifests: desktop Chrome/Chromium receives only its service-worker entry, and Firefox receives only its event-page background entry. Vidsrc.sbs remains disabled because its changing nested origins have not passed the same control and security model.
-- **Missing or stale extension:** Disable invitation acceptance and auto-detect the current browser locally. Firefox receives a `web-ext`-built ZIP whose `manifest.json` is at the archive root, plus `about:debugging` / **Load Temporary Add-on** steps that select the ZIP directly; Chrome, Edge, Opera, and Chromium receive the unpacked ZIP plus Developer mode / **Load unpacked** steps; unsupported or mobile browsers receive both desktop alternatives without a false compatibility claim. If the browser reloads or updates an installed extension while the room tab remains open, identify the invalidated context and offer a one-click room reload rather than another install prompt. Explain that PairBeam never initiates installation, Firefox temporary installs end on restart, and standard Firefox requires Mozilla signing for permanent installation. Never distribute a `.crx` or expose a `.pem` signing key.
-- **Fullscreen:** Use PairBeam-level fullscreen for the external stage so PairBeam chat, episode navigation, the draggable participant camera, and call controls remain available. The cross-origin provider iframe is not granted native fullscreen permission because browser top-layer isolation would hide those sibling controls. A bottom-center down-arrow reveals the mic/camera/share/movie dashboard and changes to an up-arrow while expanded. After 3 seconds of inactivity, the dashboard and arrow, chat panel or launcher, top-right fullscreen/stop actions, and left episode trigger fade completely and become non-interactive; pointer, click, or keyboard activity restores them. Radix portals must mount inside the active fullscreen element so dialogs remain visible, focus-managed, and keyboard accessible.
+- **Current result:** Cross-origin providers are not reliably controllable from an ordinary PairBeam page, so the experimental cross-browser MV3 extension supplies the local player bridge after explicit installation and viewer consent. The provider-first picker supports Vidking, Zoryva, 2Embed, and VidSrc.io. One bridge codebase is packaged with separate manifests: desktop Chrome/Chromium receives only its service-worker entry, and Firefox receives only its event-page background entry. Exact provider/player origins are allowlisted; VidSrc.io can fail closed if its internal hostname rotates.
+- **Missing or stale extension:** Disable invitation acceptance and auto-detect the current browser locally. The content bridge announces installation immediately instead of waiting for the Chromium MV3 worker, and the UI shows a short checking state before install guidance. Both browser ZIPs keep `manifest.json` at the archive root. Firefox uses **Load Temporary Add-on** on the ZIP; Chrome-family browsers extract it and select the folder containing `manifest.json` through **Load unpacked**. If an installed extension context is invalidated, offer a one-click room reload rather than another install prompt. Never distribute a `.crx` or expose a `.pem` signing key.
+- **Fullscreen:** Use PairBeam-level fullscreen for the external stage so PairBeam chat, episode navigation, the participant dock, and call controls remain available. The cross-origin provider iframe is not granted native fullscreen permission because browser top-layer isolation would hide sibling controls. The dashboard fades directly and returns with activity; it has no reveal handle. Participant/content tiles and the Chat launcher remain visible until the user explicitly enters focus mode. Radix portals mount inside the active fullscreen element so dialogs remain visible and keyboard accessible.
 - **Interaction motion:** Use a consistent fast motion language across room surfaces. Chat and compact pickers use opacity plus a short translate/scale settle; centered catalog dialogs pair a fading backdrop with a restrained scale/vertical overshoot; side and bottom episode Sheets slide from their physical edge with a subtle final settle; settings Popovers scale from the Radix trigger origin. Entrances may take 190–280 ms, exits 100–190 ms, and paired surfaces share timing. Animate only transform and opacity, keep keyboard navigation immediate, and reduce transform motion to a near-instant state change under `prefers-reduced-motion`.
-- **Catalog behavior:** Catalog metadata never claims playback availability. Starting the Vidking prototype requires the extension-specific proposal and peer consent before loading the provider.
-- **Episode identity:** A TV proposal is invalid without positive season and episode numbers. The proposal also carries a bounded episode title for display, and both participants derive the same `/embed/tv/{tmdbId}/{season}/{episode}` URL locally.
+- **Catalog behavior:** Catalog metadata never claims playback availability. Before search is enabled, the user must choose a provider. Starting the prototype requires the extension-specific proposal and peer consent before loading that provider.
+- **Episode identity:** A TV proposal is invalid without a supported provider ID plus positive season and episode numbers. The proposal also carries a bounded episode title for display, and both participants derive the same provider-specific episode URL locally.
 - **Episode changes:** Either participant may select another episode. A non-authority sends a bounded request; the proposer authority increments and broadcasts the media revision. Playback commands and state must match that revision so events from the replaced episode cannot affect the new player.
 - **Signaling recovery:** Keep an accepted provider iframe mounted when the signaling WebSocket reconnects, the in-memory signaling room is reconstructed, the peer temporarily leaves, or WebRTC receives a replacement offer. Rebuild only the peer transport. When the replacement data channel opens, exchange a validated session/media/playback snapshot and reconcile to the authority's latest clock. Only explicit **Stop watching** or room exit removes locally active external playback.
 - **No reload synchronization:** Do not emulate play/pause/seek by recreating an iframe with a timestamp. Reloading destroys buffer and subtitle state, can fail browser autoplay checks, and cannot provide a stable shared clock.

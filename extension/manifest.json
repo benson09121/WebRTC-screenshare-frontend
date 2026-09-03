@@ -1,10 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "PairBeam Vidking Sync Prototype",
-  "description": "Connects PairBeam watch rooms to a Vidking player without reading or relaying its media URL.",
-  "version": "0.4.2",
+  "name": "PairBeam Watch Sync",
+  "description": "Synchronizes playback controls on explicitly selected PairBeam watch providers without reading or relaying media URLs.",
+  "version": "0.5.1",
   "permissions": ["tabs", "webNavigation"],
-  "host_permissions": ["https://www.vidking.net/*"],
+  "host_permissions": [
+    "https://www.vidking.net/*",
+    "https://zoryva.me/*",
+    "https://zoryvax.neonnexusx.games/*",
+    "https://www.2embed.cc/*",
+    "https://streamsrcs.2embed.cc/*",
+    "https://cineby.hair/*",
+    "https://videm.xyz/*",
+    "https://*.videm.xyz/*",
+    "https://vidcore.net/*",
+    "https://*.vidcore.net/*",
+    "https://vidsrc.io/*",
+    "https://cloudorchestranova.com/*",
+    "https://*.cloudorchestranova.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -19,7 +33,21 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["https://www.vidking.net/embed/*"],
+      "matches": [
+        "https://www.vidking.net/*",
+        "https://zoryva.me/*",
+        "https://zoryvax.neonnexusx.games/*",
+        "https://www.2embed.cc/*",
+        "https://streamsrcs.2embed.cc/*",
+        "https://cineby.hair/*",
+        "https://videm.xyz/*",
+        "https://*.videm.xyz/*",
+        "https://vidcore.net/*",
+        "https://*.vidcore.net/*",
+        "https://vidsrc.io/*",
+        "https://cloudorchestranova.com/*",
+        "https://*.cloudorchestranova.com/*"
+      ],
       "js": ["vidking-player.js"],
       "all_frames": true,
       "run_at": "document_idle"

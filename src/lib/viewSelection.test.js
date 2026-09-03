@@ -37,3 +37,27 @@ test('falls back to the other available share when the selected share ends', () 
     'local-screen',
   );
 });
+
+test('keeps an explicitly focused local camera selected', () => {
+  assert.equal(
+    getNextSelectedView({
+      selectedView: 'local-camera',
+      hasRemoteScreen: true,
+      hasLocalScreen: false,
+      previousShares: { local: false, remote: true },
+    }),
+    'local-camera',
+  );
+});
+
+test('does not override the synchronized provider selection', () => {
+  assert.equal(
+    getNextSelectedView({
+      selectedView: 'external-watch',
+      hasRemoteScreen: false,
+      hasLocalScreen: false,
+      previousShares: { local: false, remote: false },
+    }),
+    'external-watch',
+  );
+});

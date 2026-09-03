@@ -35,10 +35,19 @@ export const createChatMessagePayload = ({
   clientId,
   sequence,
   text,
+  replyToId = null,
   now = Date.now(),
 }) => {
   const normalizedText = typeof text === 'string' ? text.trim() : '';
   if (!normalizedText || normalizedText.length > CHAT_MESSAGE_MAX_LENGTH)
+    return null;
+  if (
+    replyToId != null &&
+    (typeof replyToId !== 'string' ||
+      replyToId.length < 1 ||
+      replyToId.length > CHAT_MESSAGE_ID_MAX_LENGTH ||
+      !CHAT_ID_PATTERN.test(replyToId))
+  )
     return null;
 
   const safeClientId =
@@ -51,7 +60,7 @@ export const createChatMessagePayload = ({
   );
   const safeSequence = Math.max(0, Math.trunc(Number(sequence) || 0));
 
-  return {
+  const payload = {
     type: 'chat',
     id: `${safeClientId}:${sentAt.toString(36)}:${safeSequence.toString(36)}`.slice(
       0,
@@ -60,6 +69,8 @@ export const createChatMessagePayload = ({
     text: normalizedText,
     sentAt,
   };
+  if (replyToId) payload.replyToId = replyToId;
+  return payload;
 };
 
 export const normalizeChatMessagePayload = (payload, from = 'remote') => {
@@ -69,6 +80,15 @@ export const normalizeChatMessagePayload = (payload, from = 'remote') => {
     payload.id.length < 1 ||
     payload.id.length > CHAT_MESSAGE_ID_MAX_LENGTH ||
     !CHAT_ID_PATTERN.test(payload.id)
+  )
+    return null;
+
+  if (
+    payload.replyToId != null &&
+    (typeof payload.replyToId !== 'string' ||
+      payload.replyToId.length < 1 ||
+      payload.replyToId.length > CHAT_MESSAGE_ID_MAX_LENGTH ||
+      !CHAT_ID_PATTERN.test(payload.replyToId))
   )
     return null;
 
@@ -91,6 +111,7 @@ export const normalizeChatMessagePayload = (payload, from = 'remote') => {
     text: payload.text,
     from: from === 'local' ? 'local' : 'remote',
     sentAt: payload.sentAt,
+    replyToId: payload.replyToId || null,
     reactions: {},
   };
 };

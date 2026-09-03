@@ -5,6 +5,7 @@ let desiredPlayback = null;
 let lastProgressAt = 0;
 let resumeAfterUserSeek = false;
 let lastActivityAt = 0;
+let playerRegistered = false;
 
 const sendRuntimeMessage = (message) => {
   try {
@@ -21,12 +22,24 @@ const sendRuntimeMessage = (message) => {
   }
 };
 
+const registerPlayer = () => {
+  if (playerRegistered || !player?.isConnected) return;
+  playerRegistered = true;
+  sendRuntimeMessage({ source: 'provider-player', type: 'register' });
+};
+
+const unregisterPlayer = () => {
+  if (!playerRegistered) return;
+  playerRegistered = false;
+  sendRuntimeMessage({ source: 'provider-player', type: 'unregister' });
+};
+
 const reportUserActivity = () => {
   const now = performance.now();
   if (now - lastActivityAt < 250) return;
   lastActivityAt = now;
   sendRuntimeMessage({
-    source: 'vidking-player',
+    source: 'provider-player',
     type: 'user-activity',
   });
 };
@@ -78,7 +91,7 @@ const snapshot = (eventName, extra = {}) => ({
 
 const report = (eventName, extra) => {
   sendRuntimeMessage({
-    source: 'vidking-player',
+    source: 'provider-player',
     type: 'player-event',
     event: snapshot(eventName, extra),
   });
@@ -163,10 +176,20 @@ const restoreAfterSourceChange = async () => {
 };
 
 const attach = (candidate) => {
-  if (!candidate || candidate === player) return;
+  if (candidate === player) {
+    registerPlayer();
+    return;
+  }
   playerListeners?.abort();
+  playerListeners = null;
+  if (!candidate) {
+    player = null;
+    unregisterPlayer();
+    return;
+  }
   playerListeners = new AbortController();
   player = candidate;
+  registerPlayer();
   const options = { signal: playerListeners.signal };
   player.addEventListener('play', () => rememberPlayback('play'), options);
   player.addEventListener('pause', () => rememberPlayback('pause'), options);
@@ -281,14 +304,14 @@ const runCommand = async (command) => {
 };
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.target !== 'vidking-player') return;
+  if (message?.target !== 'provider-player') return;
   if (message.type === 'command') runCommand(message.command || {});
   if (message.type === 'register-request') {
-    sendRuntimeMessage({ source: 'vidking-player', type: 'register' });
+    discoverPlayer();
+    registerPlayer();
   }
 });
 
-sendRuntimeMessage({ source: 'vidking-player', type: 'register' });
 discoverPlayer();
 new MutationObserver(discoverPlayer).observe(document.documentElement, {
   attributes: true,
@@ -296,3 +319,4 @@ new MutationObserver(discoverPlayer).observe(document.documentElement, {
   childList: true,
   subtree: true,
 });
+window.addEventListener('pagehide', unregisterPlayer);

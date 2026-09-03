@@ -3,7 +3,6 @@ import { useWebRTC } from '../context/useWebRTC';
 import {
   Captions,
   ChevronDown,
-  ChevronUp,
   Film,
   Link2,
   Mic,
@@ -23,6 +22,7 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { ConnectionHealth } from './ConnectionHealth';
 import {
   Tooltip,
   TooltipContent,
@@ -198,11 +198,7 @@ const VolumeControl = ({
   );
 };
 
-export const ControlPanel = ({
-  isIdle,
-  fullscreenDashboardOpen,
-  setFullscreenDashboardOpen,
-}) => {
+export const ControlPanel = ({ isIdle }) => {
   const {
     endCall,
     setCameraStream,
@@ -1632,36 +1628,24 @@ export const ControlPanel = ({
   };
 
   useEffect(() => {
-    setFullscreenDashboardOpen(false);
     setActiveSettingsMenu(null);
     setShowMovieSourcePicker(false);
-  }, [isFullscreen, setFullscreenDashboardOpen]);
+  }, [isFullscreen]);
 
   const dashboardHidden =
     isPresentationMode ||
-    (isFullscreen ? isIdle || !fullscreenDashboardOpen : isIdle);
-  const fullscreenHandleHidden = isFullscreen && isIdle;
+    (isIdle && !activeSettingsMenu && !showMovieSourcePicker);
   const movieSourcePickerVisible =
     showMovieSourcePicker &&
     localShareSource?.kind !== 'movie' &&
     !activeSettingsMenu;
-
-  const toggleFullscreenDashboard = () => {
-    setFullscreenDashboardOpen((current) => {
-      if (current) {
-        setActiveSettingsMenu(null);
-        setShowMovieSourcePicker(false);
-      }
-      return !current;
-    });
-  };
 
   return (
     <TooltipProvider delayDuration={250}>
       <>
         <div
           id="call-dashboard"
-          className={`absolute left-1/2 z-20 flex -translate-x-1/2 items-end gap-4 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ${isFullscreen ? 'bottom-16' : 'bottom-4 hover:!translate-y-0 hover:!opacity-100 sm:bottom-8'} ${dashboardHidden ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`}
+          className={`absolute bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-end gap-4 transition-[opacity,transform] duration-200 ease-out hover:!translate-y-0 hover:!opacity-100 motion-reduce:transition-none sm:bottom-8 ${dashboardHidden ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`}
           aria-hidden={dashboardHidden}
           inert={dashboardHidden}
         >
@@ -1697,7 +1681,7 @@ export const ControlPanel = ({
 
           {localShareSource?.kind !== 'movie' ? (
             <aside
-              className={`absolute bottom-20 left-1/2 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-[opacity,transform] will-change-transform motion-reduce:transition-none ${movieSourcePickerVisible ? 'translate-y-0 scale-100 opacity-100 duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)]' : 'pointer-events-none translate-y-3 scale-[0.975] opacity-0 duration-[170ms] ease-out'}`}
+              className={`bg-surface/95 absolute bottom-20 left-1/2 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-3 rounded-2xl border border-white/10 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl transition-[opacity,transform] will-change-transform motion-reduce:transition-none ${movieSourcePickerVisible ? 'translate-y-0 scale-100 opacity-100 duration-[240ms] ease-[cubic-bezier(0.16,1,0.3,1)]' : 'pointer-events-none translate-y-3 scale-[0.975] opacity-0 duration-[170ms] ease-out'}`}
               aria-label="Choose a movie source"
               aria-hidden={!movieSourcePickerVisible}
               inert={!movieSourcePickerVisible}
@@ -1820,7 +1804,7 @@ export const ControlPanel = ({
                 onClose={() => setShowWatchCatalog(false)}
                 onProposal={(item) =>
                   proposeExternalWatch({
-                    providerId: 'vidking-extension',
+                    providerId: item.providerId,
                     mediaType: item.mediaType,
                     tmdbId: item.id,
                     title: item.title,
@@ -1839,7 +1823,7 @@ export const ControlPanel = ({
           !activeSettingsMenu &&
           !showMovieSourcePicker ? (
             <aside
-              className="absolute bottom-20 left-1/2 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-[#111719]/95 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl"
+              className="bg-surface/95 absolute bottom-20 left-1/2 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl"
               aria-label="Movie ready to share"
             >
               <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-teal-300/10 text-teal-200">
@@ -1896,7 +1880,7 @@ export const ControlPanel = ({
           )}
 
           {/* Control Bar */}
-          <div className="flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#111719]/90 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:gap-2 sm:p-2">
+          <div className="bg-surface flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-full border border-white/10 p-1.5 shadow-xl backdrop-blur-2xl sm:gap-2 sm:p-2 sm:px-4">
             <div
               className="flex items-center gap-px"
               role="group"
@@ -2100,37 +2084,6 @@ export const ControlPanel = ({
               role="group"
               aria-label="Screen sharing controls"
             >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    className="size-10 rounded-r-md sm:size-11"
-                    variant={
-                      localShareSource?.kind === 'screen'
-                        ? 'active'
-                        : 'secondary'
-                    }
-                    size="icon"
-                    onClick={toggleScreenShare}
-                    disabled={localShareSource?.kind === 'movie'}
-                    aria-label={
-                      localShareSource?.kind === 'movie'
-                        ? 'Stop the movie before sharing your screen'
-                        : localShareSource?.kind === 'screen'
-                          ? 'Stop sharing your screen'
-                          : 'Share your screen'
-                    }
-                  >
-                    <MonitorUp className="size-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {localShareSource?.kind === 'movie'
-                    ? 'Stop the movie first'
-                    : localShareSource?.kind === 'screen'
-                      ? 'Stop sharing your screen'
-                      : 'Share your screen'}
-                </TooltipContent>
-              </Tooltip>
               <Popover
                 open={activeSettingsMenu === 'screen'}
                 onOpenChange={(open) =>
@@ -2139,39 +2092,47 @@ export const ControlPanel = ({
               >
                 <PopoverTrigger asChild>
                   <Button
-                    className="h-10 w-6 rounded-l-md px-0 sm:h-11 sm:w-7"
+                    className={`size-10 sm:size-11 ${localShareSource?.kind === 'screen' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
                     variant={
-                      activeSettingsMenu === 'screen' ? 'active' : 'secondary'
+                      localShareSource?.kind === 'screen'
+                        ? 'active'
+                        : 'secondary'
                     }
                     size="icon"
                     disabled={localShareSource?.kind === 'movie'}
-                    aria-label="Open screen sharing settings"
+                    onClick={(e) => {
+                      if (localShareSource?.kind === 'screen') {
+                        e.preventDefault();
+                        toggleScreenShare(); // Stop sharing directly
+                      }
+                    }}
+                    aria-label={
+                      localShareSource?.kind === 'screen'
+                        ? 'Stop sharing screen'
+                        : 'Share screen'
+                    }
                   >
-                    <ChevronDown className="size-3.5" />
+                    <MonitorUp className="size-5" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
                   align="center"
                   side="top"
                   aria-labelledby="screen-settings-title"
+                  className="w-72"
                 >
-                  <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
                       <h3
                         id="screen-settings-title"
-                        className="text-sm font-semibold text-zinc-100"
+                        className="text-base font-semibold text-zinc-100"
                       >
                         Screen sharing
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-zinc-500">
-                        Quality, content, and audio
+                      <p className="mt-0.5 text-xs text-zinc-400">
+                        Select your preferred quality before sharing.
                       </p>
                     </div>
-                    {localShareSource?.kind === 'screen' ? (
-                      <span className="rounded-full bg-teal-300/10 px-2 py-1 text-[10px] font-medium text-teal-200">
-                        Live
-                      </span>
-                    ) : null}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -2282,10 +2243,10 @@ export const ControlPanel = ({
                         </span>
                       </div>
                       <div className="flex justify-between gap-3">
-                        <span>
+                        <label>
                           {LIMITATION_COPY[screenLimitationReason] ||
                             LIMITATION_COPY.other}
-                        </span>
+                        </label>
                         <span className="text-zinc-300">
                           {screenMetrics.outbound?.sendBitrateKbps
                             ? `${(screenMetrics.outbound.sendBitrateKbps / 1000).toFixed(1)} Mbps`
@@ -2294,6 +2255,18 @@ export const ControlPanel = ({
                       </div>
                     </div>
                   </details>
+
+                  {!localShareSource?.kind && (
+                    <Button
+                      className="mt-4 h-11 w-full bg-teal-500 font-semibold text-black hover:bg-teal-400"
+                      onClick={() => {
+                        handleSettingsMenuOpenChange('screen', false);
+                        toggleScreenShare();
+                      }}
+                    >
+                      Start Sharing
+                    </Button>
+                  )}
                 </PopoverContent>
               </Popover>
             </div>
@@ -2338,6 +2311,15 @@ export const ControlPanel = ({
 
             <div className="mx-0.5 h-7 w-px bg-white/10 sm:mx-1" />
 
+            <ConnectionHealth
+              open={activeSettingsMenu === 'connection'}
+              onOpenChange={(open) =>
+                handleSettingsMenuOpenChange('connection', open)
+              }
+            />
+
+            <div className="mx-0.5 h-7 w-px bg-white/10 sm:mx-1" />
+
             <Button
               variant="destructive"
               onClick={handleLeaveRoom}
@@ -2348,38 +2330,6 @@ export const ControlPanel = ({
             </Button>
           </div>
         </div>
-        {isFullscreen && !isPresentationMode ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="secondary"
-                size="icon"
-                className={`absolute bottom-3 left-1/2 z-[70] size-10 -translate-x-1/2 rounded-full border-white/15 bg-[#111719]/92 shadow-[0_12px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl transition-opacity duration-200 ease-out motion-reduce:transition-none ${fullscreenHandleHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
-                onClick={toggleFullscreenDashboard}
-                aria-label={
-                  fullscreenDashboardOpen
-                    ? 'Hide call dashboard'
-                    : 'Show call dashboard'
-                }
-                aria-controls="call-dashboard"
-                aria-expanded={fullscreenDashboardOpen}
-                aria-hidden={fullscreenHandleHidden}
-                inert={fullscreenHandleHidden}
-              >
-                {fullscreenDashboardOpen ? (
-                  <ChevronUp className="size-4" />
-                ) : (
-                  <ChevronDown className="size-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {fullscreenDashboardOpen
-                ? 'Hide call controls'
-                : 'Show call controls'}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
       </>
     </TooltipProvider>
   );

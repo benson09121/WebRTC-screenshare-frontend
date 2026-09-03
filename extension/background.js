@@ -40,7 +40,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendStatus(tabId);
     chrome.tabs.sendMessage(
       tabId,
-      { target: 'vidking-player', type: 'register-request' },
+      { target: 'provider-player', type: 'register-request' },
       () => {
         void chrome.runtime.lastError;
       },
@@ -49,8 +49,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message.source === 'vidking-player' && message.type === 'register') {
+  if (message.source === 'provider-player' && message.type === 'register') {
     state.playerFrameIds.add(sender.frameId);
+    sendStatus(tabId);
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.source === 'provider-player' && message.type === 'unregister') {
+    state.playerFrameIds.delete(sender.frameId);
     sendStatus(tabId);
     sendResponse({ ok: true });
     return false;
@@ -59,7 +66,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.source === 'pairbeam-bridge' && message.type === 'command') {
     for (const frameId of state.playerFrameIds) {
       sendToFrame(tabId, frameId, {
-        target: 'vidking-player',
+        target: 'provider-player',
         type: 'command',
         command: message.command,
       });
@@ -77,7 +84,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message.source === 'vidking-player' && message.type === 'player-event') {
+  if (message.source === 'provider-player' && message.type === 'player-event') {
     if (Number.isInteger(state.pairbeamFrameId)) {
       sendToFrame(tabId, state.pairbeamFrameId, {
         target: 'pairbeam-bridge',
@@ -88,7 +95,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message.source === 'vidking-player' && message.type === 'user-activity') {
+  if (
+    message.source === 'provider-player' &&
+    message.type === 'user-activity'
+  ) {
     if (Number.isInteger(state.pairbeamFrameId)) {
       sendToFrame(tabId, state.pairbeamFrameId, {
         target: 'pairbeam-bridge',
@@ -102,6 +112,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => tabs.delete(tabId));
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  const state = tabs.get(details.tabId);
+  if (!state || !state.playerFrameIds.delete(details.frameId)) return;
+  sendStatus(details.tabId);
+});
 
 chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
   const state = tabs.get(details.sourceTabId);

@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clock3,
   Film,
+  Globe2,
   ListVideo,
   Play,
   Search,
@@ -20,6 +21,10 @@ import {
 import { Input } from './ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from './ui/sheet';
 import { tmdbCatalog } from '../lib/catalogApi';
+import {
+  EXTERNAL_WATCH_PROVIDERS,
+  getExternalWatchProvider,
+} from '../lib/externalWatchProviders';
 
 const imageUrl = (path, size = 'w342') => {
   if (!path) return null;
@@ -210,6 +215,7 @@ const EpisodeList = ({ episodes, status, error, onWatch }) => {
 };
 
 export const WatchCatalog = ({ open, onClose, onProposal }) => {
+  const [selectedProviderId, setSelectedProviderId] = useState(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState('idle');
@@ -229,6 +235,7 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
 
   useEffect(() => {
     if (!open) return undefined;
+    setSelectedProviderId(null);
     setQuery('');
     setResults([]);
     setSelected(null);
@@ -243,7 +250,7 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
   }, [open]);
 
   useEffect(() => {
-    if (!open || selected || query.trim().length < 2) {
+    if (!open || !selectedProviderId || selected || query.trim().length < 2) {
       if (!selected) setResults([]);
       return undefined;
     }
@@ -269,7 +276,9 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [open, query, page, selected]);
+  }, [open, query, page, selected, selectedProviderId]);
+
+  const selectedProvider = getExternalWatchProvider(selectedProviderId);
 
   const openDetail = async (item) => {
     const controller = new AbortController();
@@ -333,7 +342,10 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
 
   const submitProposal = (media) => {
     setProposalError('');
-    if (onProposal?.(media)) {
+    if (
+      selectedProvider &&
+      onProposal?.({ ...media, providerId: selectedProvider.id })
+    ) {
       onClose();
       return;
     }
@@ -364,16 +376,24 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
         data-idle-exempt="true"
       >
         <header className="border-border flex shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-6">
-          {selected ? (
+          {selected || selectedProvider ? (
             <Button
               variant="ghost"
               size="icon"
               onClick={() => {
-                setSelected(null);
+                if (selected) setSelected(null);
+                else {
+                  setSelectedProviderId(null);
+                  setQuery('');
+                  setResults([]);
+                  setStatus('idle');
+                }
                 setError('');
                 setProposalError('');
               }}
-              aria-label="Back to catalog search"
+              aria-label={
+                selected ? 'Back to catalog search' : 'Back to provider choices'
+              }
             >
               <ArrowLeft className="size-4" />
             </Button>
@@ -384,13 +404,19 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
           )}
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-foreground truncate text-sm font-semibold">
-              {selected ? selected.title : 'Find something to watch'}
+              {selected
+                ? selected.title
+                : selectedProvider
+                  ? `Browse with ${selectedProvider.name}`
+                  : 'Choose a playback provider'}
             </DialogTitle>
             <DialogDescription
               id="watch-catalog-description"
               className="text-subtle-foreground text-xs"
             >
-              Browse titles to propose for the room
+              {selectedProvider
+                ? `Both participants will load ${selectedProvider.name} locally`
+                : 'Pick where both browsers should load the title'}
             </DialogDescription>
           </div>
           <Button
@@ -403,7 +429,69 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
           </Button>
         </header>
 
-        {selected ? (
+        {!selectedProvider ? (
+          <div className="motion-content-swap min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            <section
+              className="mx-auto flex min-h-full w-full max-w-4xl flex-col justify-center"
+              aria-labelledby="provider-picker-title"
+            >
+              <div className="max-w-2xl">
+                <p className="font-mono text-[11px] font-semibold tracking-[0.16em] text-teal-300 uppercase">
+                  Step 1 of 2
+                </p>
+                <h2
+                  id="provider-picker-title"
+                  className="text-foreground mt-2 text-xl font-semibold sm:text-2xl"
+                >
+                  Choose the provider first
+                </h2>
+                <p className="text-muted-foreground mt-2 text-sm leading-6">
+                  Your choice is included in the watch invitation so both
+                  participants open the same provider. Each browser requests the
+                  media directly; PairBeam sends only playback state.
+                </p>
+              </div>
+              <ul
+                className="mt-6 grid gap-3 sm:grid-cols-2"
+                aria-label="Playback providers"
+              >
+                {EXTERNAL_WATCH_PROVIDERS.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProviderId(item.id)}
+                      className="border-border bg-card group focus-visible:ring-focus flex min-h-32 w-full items-start gap-4 rounded-2xl border p-4 text-left transition-[border-color,background-color,transform] duration-200 outline-none hover:-translate-y-0.5 hover:border-teal-300/30 hover:bg-teal-300/[0.04] focus-visible:ring-2 motion-reduce:transform-none motion-reduce:transition-none sm:p-5"
+                    >
+                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-300/10 text-teal-200 transition-colors group-hover:bg-teal-300/15">
+                        <Globe2 className="size-4" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-foreground text-sm font-semibold">
+                            {item.name}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${item.status === 'Tested' ? 'bg-teal-300/10 text-teal-200' : 'bg-amber-300/10 text-amber-200'}`}
+                          >
+                            {item.status}
+                          </span>
+                        </span>
+                        <span className="text-muted-foreground mt-2 block text-xs leading-5">
+                          {item.description}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-subtle-foreground mt-5 text-[11px] leading-5">
+                Provider availability, advertising, subtitles, and content
+                rights are controlled by each third party. Experimental
+                providers may stop working when their nested player changes.
+              </p>
+            </section>
+          </div>
+        ) : selected ? (
           <div className="motion-content-swap min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {detailStatus === 'loading' ? (
               <div
@@ -464,10 +552,11 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
                       </p>
                     )}
                     <p className="text-subtle-foreground mt-2 max-w-2xl text-[11px] leading-5">
-                      Experimental desktop-browser prototype. Both participants
-                      need the PairBeam extension for Chrome/Chromium or
-                      Firefox; each browser loads Vidking locally while only
-                      playback state travels through the private room.
+                      Experimental desktop-browser prototype using{' '}
+                      {selectedProvider.name}. Both participants need the
+                      PairBeam extension for Chrome/Chromium or Firefox; each
+                      browser loads the provider locally while only playback
+                      state travels through the private room.
                     </p>
                     {proposalError ? (
                       <p

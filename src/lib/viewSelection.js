@@ -4,7 +4,12 @@ export const getNextSelectedView = ({
   hasLocalScreen,
   previousShares,
 }) => {
-  if (!hasRemoteScreen && !hasLocalScreen) return 'remote-camera';
+  if (selectedView === 'external-watch') return selectedView;
+  if (!hasRemoteScreen && !hasLocalScreen) {
+    return ['remote-camera', 'local-camera'].includes(selectedView)
+      ? selectedView
+      : 'remote-camera';
+  }
   if (selectedView === 'remote-screen' && !hasRemoteScreen) {
     return hasLocalScreen ? 'local-screen' : 'remote-camera';
   }

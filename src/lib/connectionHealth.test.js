@@ -41,3 +41,14 @@ test('shows signaling reconnect separately when media is not connected', () => {
 
   assert.equal(presentation.statusLabel, 'Signaling reconnecting');
 });
+
+test('stops presenting an exhausted media recovery as reconnecting', () => {
+  const presentation = getConnectionHealthPresentation({
+    connected: false,
+    wsStatus: 'connected',
+    peerPresence: 'failed',
+    stats: { quality: 'unknown', qualityLimitationReason: 'none' },
+  });
+
+  assert.equal(presentation.statusLabel, 'Call unavailable');
+});

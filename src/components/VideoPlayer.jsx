@@ -47,6 +47,11 @@ const PRESENCE_COPY = {
     title: 'Reconnecting the call',
     description: 'The room is still open while the peer connection recovers.',
   },
+  failed: {
+    title: 'The call could not reconnect',
+    description:
+      'Reload the room and try again. If this repeats across networks, the deployment needs a TURN relay.',
+  },
   left: {
     title: 'Participant left the room',
     description:
@@ -65,7 +70,7 @@ const ParticipantPlaceholder = ({ connected, peerPresence }) => {
 
   return (
     <section
-      className="bg-canvas flex h-full w-full items-center justify-center"
+      className="bg-bg flex h-full w-full items-center justify-center"
       aria-live="polite"
     >
       <div className="flex max-w-sm flex-col items-center px-6 text-center">
@@ -571,7 +576,7 @@ export const VideoPlayer = ({ isIdle }) => {
     <TooltipProvider delayDuration={250}>
       <main
         ref={containerRef}
-        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-canvas'} ${isChatOpen && (isPresentationMode || (isFullscreen && !isIdle)) ? 'call-stage--chat-docked' : ''}`}
+        className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-bg'} ${isChatOpen ? 'call-stage--chat-docked' : ''}`}
       >
         <audio ref={remoteAudioRef} autoPlay aria-label="Participant audio" />
         {pictureInPictureError ? (
@@ -591,7 +596,7 @@ export const VideoPlayer = ({ isIdle }) => {
             </Button>
           </div>
         ) : null}
-        {(hasRemoteScreen || hasLocalScreen) && !isPresentationMode ? (
+        {(hasRemoteScreen || hasLocalScreen) ? (
           <div
             className={`absolute top-6 left-1/2 z-30 -translate-x-1/2 transition-opacity duration-300 ${controlsHidden ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
           >
@@ -629,60 +634,110 @@ export const VideoPlayer = ({ isIdle }) => {
           </div>
         ) : null}
 
-        {showParticipantPlaceholder ? (
-          <ParticipantPlaceholder
-            connected={connected}
-            peerPresence={peerPresence}
-          />
-        ) : showStreamLoading ? (
+
+        {showStreamLoading ? (
           <section
-            className="flex h-full w-full items-center justify-center bg-black"
+            className="flex h-full w-full items-center justify-center bg-bg"
             aria-live="polite"
           >
-            <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-zinc-400">
-              <span className="size-2 animate-pulse rounded-full bg-teal-300" />
+            <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-surface px-4 py-3 text-sm text-zinc-400">
+              <span className="size-2 animate-pulse rounded-full bg-primary" />
               Connecting to {mainLabel.toLowerCase()}…
             </div>
           </section>
-        ) : hasMainMedia ? (
-          <div
-            className={`h-full w-full ${isScreenView ? `bg-black ${screenVideoLayout.viewportClassName}` : 'overflow-hidden'}`}
-          >
+        ) : isScreenView ? (
+          hasMainMedia ? (
             <div
-              className={
-                isScreenView
-                  ? `bg-black ${screenVideoLayout.surfaceClassName}`
-                  : 'h-full w-full'
-              }
-              style={pixelSurfaceStyle}
+              className={`h-full w-full bg-black ${screenVideoLayout.viewportClassName}`}
             >
-              <video
-                ref={mainVideoRef}
-                autoPlay
-                playsInline
-                muted={selectedView !== 'remote-screen'}
-                onLoadedMetadata={syncMainVideoSize}
-                onResize={syncMainVideoSize}
-                onDoubleClick={toggleFullscreen}
-                onError={() => {
-                  if (directMovieUrl) {
-                    setDirectPlaybackError(
-                      'This participant could not load the direct URL. The link may be device-, region-, session-, or cookie-restricted.',
-                    );
-                  }
-                }}
-                aria-label={`${mainLabel} video`}
-                className={`cursor-pointer transition-opacity duration-300 motion-reduce:transition-none ${isScreenView ? screenVideoLayout.videoClassName : 'h-full w-full object-contain'} ${hideMainVideo ? 'opacity-0' : 'opacity-100'} ${selectedView === 'remote-camera' && remoteMirrored ? 'scale-x-[-1]' : ''}`}
-                style={mainVideoStyle}
-              />
+              <div
+                className={`bg-black ${screenVideoLayout.surfaceClassName}`}
+                style={pixelSurfaceStyle}
+              >
+                <video
+                  ref={mainVideoRef}
+                  autoPlay
+                  playsInline
+                  muted={selectedView !== 'remote-screen'}
+                  onLoadedMetadata={syncMainVideoSize}
+                  onResize={syncMainVideoSize}
+                  onDoubleClick={toggleFullscreen}
+                  onError={() => {
+                    if (directMovieUrl) {
+                      setDirectPlaybackError(
+                        'This participant could not load the direct URL.',
+                      );
+                    }
+                  }}
+                  aria-label={`${mainLabel} video`}
+                  className={`cursor-pointer transition-opacity duration-300 motion-reduce:transition-none ${screenVideoLayout.videoClassName} ${hideMainVideo ? 'opacity-0' : 'opacity-100'} ${selectedView === 'remote-camera' && remoteMirrored ? 'scale-x-[-1]' : ''}`}
+                  style={mainVideoStyle}
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <ParticipantPlaceholder
+              connected={connected}
+              peerPresence={peerPresence}
+            />
+          )
         ) : (
-          <ParticipantPlaceholder
-            connected={connected}
-            peerPresence={peerPresence}
-          />
+          <div className={`w-full h-full p-4 ${localStream && !isCameraOff && remoteStream && !remoteCameraOff ? 'discord-grid-2' : 'discord-grid-1'}`}>
+            {(!remoteStream || remoteCameraOff) && (!localStream || isCameraOff) ? (
+              <ParticipantPlaceholder
+                connected={connected}
+                peerPresence={peerPresence}
+              />
+            ) : (
+              <>
+                {(remoteStream && !remoteCameraOff) ? (
+                  <div className="relative w-full h-full rounded-[8px] overflow-hidden bg-surface shadow-lg flex items-center justify-center group/remote">
+                    <video
+                      ref={mainVideoRef}
+                      autoPlay
+                      playsInline
+                      muted={selectedView !== 'remote-screen'}
+                      className={`w-full h-full object-cover ${hideMainVideo ? 'opacity-0' : 'opacity-100'} ${remoteMirrored ? 'scale-x-[-1]' : ''}`}
+                    />
+                    <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-[4px] text-xs font-semibold">Participant</div>
+                  </div>
+                ) : null}
+
+                {(localStream && !isCameraOff) ? (
+                  <div className="relative w-full h-full rounded-[8px] overflow-hidden bg-surface shadow-lg flex items-center justify-center group/local">
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-full object-cover ${isMirrored ? 'scale-x-[-1]' : ''}`}
+                    />
+                    <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-[4px] text-xs font-semibold">You</div>
+                    
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-focus-within/local:opacity-100 group-hover/local:opacity-100">
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="size-8 bg-black/60 hover:bg-primary border-0"
+                        onClick={() => {
+                          const nextMirrored = !isMirrored;
+                          setIsMirrored(nextMirrored);
+                          sendControlMessage({
+                            type: 'mirror-toggle',
+                            isMirrored: nextMirrored,
+                          });
+                        }}
+                      >
+                        <FlipHorizontal className="size-4 text-white" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
         )}
+
 
         {!showParticipantPlaceholder && hasMainMedia && isPresentationMode ? (
           <div
@@ -970,7 +1025,7 @@ export const VideoPlayer = ({ isIdle }) => {
           </motion.div>
         ) : null}
 
-        {!externalWatchSession &&
+        {isScreenView && !externalWatchSession &&
         !isPresentationMode &&
         !hideLocal &&
         localStream &&

@@ -1,6 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
+  buildExternalWatchEmbedUrl,
   buildVidkingEmbedUrl,
   createExternalWatchProposal,
   isNewerExternalWatchState,
@@ -77,6 +78,26 @@ test('requires an exact TV episode and rejects unsupported providers', () => {
   );
 });
 
+test('accepts every supported extension provider and builds its embed URL', () => {
+  const expectedOrigins = {
+    'vidking-extension': 'https://www.vidking.net/',
+    'zoryva-extension': 'https://zoryva.me/',
+    '2embed-extension': 'https://www.2embed.cc/',
+    'vidsrc-io-extension': 'https://vidsrc.io/',
+  };
+
+  for (const [providerId, origin] of Object.entries(expectedOrigins)) {
+    const media = normalizeExternalWatchMedia({
+      providerId,
+      mediaType: 'movie',
+      tmdbId: 27205,
+      title: 'Inception',
+    });
+    assert.equal(media.providerId, providerId);
+    assert.equal(buildExternalWatchEmbedUrl(media).startsWith(origin), true);
+  }
+});
+
 test('validates commands and accepts only newer authoritative state', () => {
   const command = normalizeExternalWatchCommand({
     type: 'external-watch-command',
@@ -141,6 +162,10 @@ test('preserves an accepted watch session only for recoverable peer transport re
   );
   assert.equal(
     shouldPreserveExternalWatchSession('renegotiation-offer', session),
+    true,
+  );
+  assert.equal(
+    shouldPreserveExternalWatchSession('automatic-recovery', session),
     true,
   );
   assert.equal(

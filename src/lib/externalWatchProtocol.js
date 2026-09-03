@@ -1,5 +1,9 @@
+import {
+  buildProviderEmbedUrl,
+  isExternalWatchProviderId,
+} from './externalWatchProviders';
+
 const WATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{8,96}$/;
-const PROVIDERS = new Set(['vidking-extension']);
 const MEDIA_TYPES = new Set(['movie', 'tv']);
 const COMMANDS = new Set(['play', 'pause', 'seek']);
 
@@ -14,7 +18,7 @@ const positiveInteger = (value) =>
 export const normalizeExternalWatchMedia = (value) => {
   if (
     !value ||
-    !PROVIDERS.has(value.providerId) ||
+    !isExternalWatchProviderId(value.providerId) ||
     !MEDIA_TYPES.has(value.mediaType)
   )
     return null;
@@ -208,27 +212,19 @@ const RECOVERABLE_PEER_RESETS = new Set([
   'peer-joined-with-active-session',
   'peer-reconnected',
   'renegotiation-offer',
+  'automatic-recovery',
 ]);
 
 export const shouldPreserveExternalWatchSession = (reason, session) =>
   Boolean(session?.proposalId && RECOVERABLE_PEER_RESETS.has(reason));
 
-export const buildVidkingEmbedUrl = (media) => {
+export const buildExternalWatchEmbedUrl = (media) => {
   const normalized = normalizeExternalWatchMedia(media);
   if (!normalized) return null;
-  const path =
-    normalized.mediaType === 'movie'
-      ? `/embed/movie/${normalized.tmdbId}`
-      : `/embed/tv/${normalized.tmdbId}/${normalized.season}/${normalized.episode}`;
-  const url = new URL(path, 'https://www.vidking.net');
-  url.searchParams.set('autoPlay', 'false');
-  url.searchParams.set('color', '6ee7d2');
-  if (normalized.mediaType === 'tv') {
-    url.searchParams.set('episodeSelector', 'false');
-    url.searchParams.set('nextEpisode', 'false');
-  }
-  return url.toString();
+  return buildProviderEmbedUrl(normalized.providerId, normalized);
 };
+
+export const buildVidkingEmbedUrl = buildExternalWatchEmbedUrl;
 
 export const isNewerExternalWatchState = (current, candidate) =>
   Boolean(candidate && (!current || candidate.revision > current.revision));

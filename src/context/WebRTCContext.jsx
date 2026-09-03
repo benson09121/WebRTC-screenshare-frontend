@@ -37,6 +37,8 @@ import {
 import { WebRTCContext } from './useWebRTC';
 
 const EXTERNAL_MEDIA_SWITCH_GUARD_MS = 750;
+const CONNECTION_RECOVERY_TIMEOUT_MS = 10000;
+const MAX_CONNECTION_RECOVERY_ATTEMPTS = 3;
 
 const getIceServers = () => {
   const configuredStunUrls = import.meta.env.VITE_STUN_URLS?.split(',')
@@ -98,6 +100,9 @@ export const WebRTCProvider = ({ children }) => {
   const pcRef = useRef(null);
   const signalingSocketRef = useRef(ws);
   const disconnectRecoveryTimerRef = useRef(null);
+  const connectionRecoveryTimerRef = useRef(null);
+  const connectionRecoveryAttemptRef = useRef(0);
+  const recoverConnectionRef = useRef(null);
   const isCallerRef = useRef(false);
   const iceRestartInFlightRef = useRef(false);
   const restartIceRef = useRef(null);
@@ -171,6 +176,7 @@ export const WebRTCProvider = ({ children }) => {
   const [remoteShareSource, setRemoteShareSource] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [selectedStageView, setSelectedStageView] = useState('remote-camera');
 
   const setOutgoingExternalWatchProposal = useCallback((value) => {
     outgoingExternalWatchProposalRef.current = value;
@@ -297,6 +303,27 @@ export const WebRTCProvider = ({ children }) => {
 
   const pendingCandidates = useRef([]);
 
+  const clearConnectionRecoveryTimer = useCallback((resetAttempts = false) => {
+    if (connectionRecoveryTimerRef.current) {
+      window.clearTimeout(connectionRecoveryTimerRef.current);
+      connectionRecoveryTimerRef.current = null;
+    }
+    if (resetAttempts) connectionRecoveryAttemptRef.current = 0;
+  }, []);
+
+  const armConnectionRecoveryTimer = useCallback(
+    (pc) => {
+      clearConnectionRecoveryTimer();
+      connectionRecoveryTimerRef.current = window.setTimeout(() => {
+        connectionRecoveryTimerRef.current = null;
+        if (pcRef.current !== pc || pc.connectionState === 'connected') return;
+        iceRestartInFlightRef.current = false;
+        recoverConnectionRef.current?.(pc);
+      }, CONNECTION_RECOVERY_TIMEOUT_MS);
+    },
+    [clearConnectionRecoveryTimer],
+  );
+
   const bindTransceivers = useCallback((pc) => {
     const transceivers = pc.getTransceivers();
     const videoTransceivers = transceivers.filter(
@@ -323,6 +350,7 @@ export const WebRTCProvider = ({ children }) => {
         window.clearTimeout(disconnectRecoveryTimerRef.current);
         disconnectRecoveryTimerRef.current = null;
       }
+      clearConnectionRecoveryTimer(reason !== 'automatic-recovery');
       iceRestartInFlightRef.current = false;
       if (dataChannelRef.current) {
         dataChannelRef.current.close();
@@ -367,7 +395,11 @@ export const WebRTCProvider = ({ children }) => {
         externalWatchRevisionRef.current = 0;
       }
     },
-    [setExternalWatchSession, setOutgoingExternalWatchProposal],
+    [
+      clearConnectionRecoveryTimer,
+      setExternalWatchSession,
+      setOutgoingExternalWatchProposal,
+    ],
   );
 
   const handleDataMessage = (event) => {
@@ -906,6 +938,8 @@ export const WebRTCProvider = ({ children }) => {
               error,
             );
             setPeerPresence('reconnecting');
+            if (pcRef.current) armConnectionRecoveryTimer(pcRef.current);
+            else setPeerPresence('failed');
           }
         }
       } else if (msg.type === 'peer-joined') {
@@ -917,11 +951,16 @@ export const WebRTCProvider = ({ children }) => {
         } catch (error) {
           console.error('[WebRTC] Failed to start call:', error);
           setPeerPresence('reconnecting');
+          if (pcRef.current) armConnectionRecoveryTimer(pcRef.current);
+          else setPeerPresence('failed');
         }
       } else if (msg.type === 'ice-restart-request') {
-        if (isCallerRef.current) await restartIceRef.current?.();
+        if (isCallerRef.current)
+          await recoverConnectionRef.current?.(pcRef.current, true);
       } else if (msg.type === 'offer') {
         try {
+          clearConnectionRecoveryTimer(true);
+          iceRestartInFlightRef.current = false;
           const canReuseConnection = Boolean(
             msg.iceRestart &&
             pcRef.current &&
@@ -1029,9 +1068,14 @@ export const WebRTCProvider = ({ children }) => {
           console.log('[Signaling] Sending answer');
           if (pcRef.current === pc && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(pc.localDescription));
+            armConnectionRecoveryTimer(pc);
           }
         } catch (err) {
           console.error('[WebRTC] Error handling offer:', err);
+          setConnected(false);
+          setPeerPresence('reconnecting');
+          if (pcRef.current) armConnectionRecoveryTimer(pcRef.current);
+          else setPeerPresence('failed');
         }
       } else if (msg.type === 'answer') {
         const pc = pcRef.current;
@@ -1051,6 +1095,7 @@ export const WebRTCProvider = ({ children }) => {
           }
           pendingCandidates.current = [];
           iceRestartInFlightRef.current = false;
+          armConnectionRecoveryTimer(pc);
         } catch (error) {
           if (pcRef.current === pc)
             console.error('[WebRTC] Error handling answer:', error);
@@ -1078,7 +1123,15 @@ export const WebRTCProvider = ({ children }) => {
     return () => {
       if (ws.onmessage === handleSignalingMessage) ws.onmessage = null;
     };
-  }, [status, ws, bindTransceivers, resetRemotePeer, setIsChatOpen]);
+  }, [
+    armConnectionRecoveryTimer,
+    clearConnectionRecoveryTimer,
+    status,
+    ws,
+    bindTransceivers,
+    resetRemotePeer,
+    setIsChatOpen,
+  ]);
 
   useEffect(() => {
     if (
@@ -1198,6 +1251,7 @@ export const WebRTCProvider = ({ children }) => {
           window.clearTimeout(disconnectRecoveryTimerRef.current);
           disconnectRecoveryTimerRef.current = null;
         }
+        clearConnectionRecoveryTimer(true);
         iceRestartInFlightRef.current = false;
         setConnected(true);
         setPeerPresence('connected');
@@ -1209,27 +1263,13 @@ export const WebRTCProvider = ({ children }) => {
             if (pcRef.current !== pc || pc.connectionState !== 'disconnected')
               return;
             setConnected(false);
-            if (isCallerRef.current) {
-              restartIceRef.current?.();
-            } else {
-              const socket = signalingSocketRef.current;
-              if (socket?.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'ice-restart-request' }));
-              }
-            }
+            recoverConnectionRef.current?.(pc);
           }, 3000);
         }
       } else if (pc.connectionState === 'failed') {
         setConnected(false);
         setPeerPresence('reconnecting');
-        if (isCallerRef.current) {
-          restartIceRef.current?.();
-        } else {
-          const socket = signalingSocketRef.current;
-          if (socket?.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'ice-restart-request' }));
-          }
-        }
+        recoverConnectionRef.current?.(pc);
       }
     };
 
@@ -1325,6 +1365,7 @@ export const WebRTCProvider = ({ children }) => {
     if (pcRef.current !== pc || signalingSocketRef.current !== socket) return;
     console.log('[Signaling] Sending offer');
     socket.send(JSON.stringify(pc.localDescription));
+    armConnectionRecoveryTimer(pc);
   };
   startCallRef.current = startCall;
 
@@ -1338,7 +1379,7 @@ export const WebRTCProvider = ({ children }) => {
       pc.signalingState !== 'stable' ||
       socket?.readyState !== WebSocket.OPEN
     )
-      return;
+      return false;
 
     iceRestartInFlightRef.current = true;
     try {
@@ -1352,20 +1393,77 @@ export const WebRTCProvider = ({ children }) => {
       socket.send(
         JSON.stringify({ ...pc.localDescription.toJSON(), iceRestart: true }),
       );
+      armConnectionRecoveryTimer(pc);
+      return true;
     } catch (error) {
       iceRestartInFlightRef.current = false;
       if (pcRef.current === pc)
         console.error('[WebRTC] ICE restart failed:', error);
+      return false;
     }
   };
   restartIceRef.current = restartIce;
 
-  const sendMessage = (text) => {
+  const recoverConnection = async (expectedPc, force = false) => {
+    const pc = pcRef.current;
+    const socket = signalingSocketRef.current;
+    if (
+      !pc ||
+      (expectedPc && expectedPc !== pc) ||
+      (!force && pc.connectionState === 'connected') ||
+      iceRestartInFlightRef.current
+    )
+      return;
+
+    clearConnectionRecoveryTimer();
+    const attempt = connectionRecoveryAttemptRef.current + 1;
+    connectionRecoveryAttemptRef.current = attempt;
+    if (attempt > MAX_CONNECTION_RECOVERY_ATTEMPTS) {
+      setConnected(false);
+      setPeerPresence('failed');
+      return;
+    }
+
+    if (pc.connectionState !== 'connected') {
+      setConnected(false);
+      setPeerPresence('reconnecting');
+    }
+
+    if (isCallerRef.current) {
+      if (attempt === MAX_CONNECTION_RECOVERY_ATTEMPTS) {
+        resetRemotePeer('automatic-recovery');
+        setPeerPresence('joining');
+        try {
+          await startCallRef.current?.();
+        } catch (error) {
+          console.error('[WebRTC] Full transport recovery failed:', error);
+          setPeerPresence('failed');
+        }
+        return;
+      }
+      const restartStarted = await restartIceRef.current?.();
+      if (!restartStarted && pcRef.current === pc)
+        armConnectionRecoveryTimer(pc);
+      return;
+    }
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      iceRestartInFlightRef.current = true;
+      socket.send(JSON.stringify({ type: 'ice-restart-request' }));
+      armConnectionRecoveryTimer(pc);
+      return;
+    }
+    setPeerPresence('failed');
+  };
+  recoverConnectionRef.current = recoverConnection;
+
+  const sendMessage = (text, replyToId = null) => {
     const channel = dataChannelRef.current;
     const payload = createChatMessagePayload({
       clientId: clientIdRef.current,
       sequence: messageSequenceRef.current++,
       text,
+      replyToId,
     });
     if (!payload || !channel || channel.readyState !== 'open') {
       console.warn('Data channel is not open');
@@ -1888,6 +1986,8 @@ export const WebRTCProvider = ({ children }) => {
         setIsFullscreen,
         isPresentationMode,
         setIsPresentationMode,
+        selectedStageView,
+        setSelectedStageView,
         isChatOpen,
         setIsChatOpen,
         unreadCount,

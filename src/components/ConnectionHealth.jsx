@@ -12,18 +12,31 @@ import {
 import { useWebRTC } from '../context/useWebRTC';
 import { getConnectionHealthPresentation } from '../lib/connectionHealth';
 import { Button } from './ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 const QUALITY_COPY = {
-  good: { label: 'Connection good', dot: 'bg-teal-300', text: 'text-teal-200' },
+  good: {
+    label: 'Connection good',
+    bars: 3,
+    bar: 'bg-emerald-400',
+    text: 'text-emerald-300',
+  },
   fair: {
     label: 'Connection limited',
-    dot: 'bg-amber-300',
+    bars: 2,
+    bar: 'bg-amber-300',
     text: 'text-amber-200',
   },
-  poor: { label: 'Connection poor', dot: 'bg-red-400', text: 'text-red-200' },
+  poor: {
+    label: 'Connection poor',
+    bars: 1,
+    bar: 'bg-red-400',
+    text: 'text-red-300',
+  },
   unknown: {
     label: 'Measuring connection',
-    dot: 'bg-zinc-500',
+    bars: 0,
+    bar: 'bg-zinc-500',
     text: 'text-zinc-300',
   },
 };
@@ -50,7 +63,22 @@ const ACTION_ICONS = {
   fair: Network,
 };
 
-export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
+const ConnectionBars = ({ copy, connected }) => (
+  <span
+    className={`flex h-5 items-end gap-0.5 ${connected ? '' : 'animate-pulse'}`}
+    aria-hidden="true"
+  >
+    {[2, 3.5, 5].map((height, index) => (
+      <span
+        key={height}
+        className={`w-1 rounded-[2px] ${index < copy.bars ? copy.bar : 'bg-zinc-600'}`}
+        style={{ height: `${height * 0.25}rem` }}
+      />
+    ))}
+  </span>
+);
+
+export const ConnectionHealth = ({ open, onOpenChange }) => {
   const { connected, connectionStats, peerPresence, wsStatus } = useWebRTC();
 
   const presentation = getConnectionHealthPresentation({
@@ -64,29 +92,26 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
   const ActionIcon = action ? ACTION_ICONS[action.kind] : null;
 
   return (
-    <div
-      className={`pointer-events-auto relative transition-opacity duration-300 ${isIdle && !open ? 'opacity-0' : 'opacity-100'}`}
-    >
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => onOpenChange(!open)}
-        aria-expanded={open}
-        aria-controls="connection-details"
-        className="w-fit bg-[#111719]/90"
-      >
-        <span
-          className={`size-2 rounded-full ${copy.dot} ${connected ? '' : 'animate-pulse'}`}
-        />
-        {statusLabel}
-      </Button>
-
-      {open ? (
-        <section
-          id="connection-details"
-          aria-label="Connection details"
-          className="absolute top-12 left-0 w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#111719]/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl"
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="size-10 sm:size-11"
+          aria-label={`${statusLabel}. Open connection details`}
+          title={statusLabel}
+          data-connection-quality={quality}
+          data-active-bars={copy.bars}
         >
+          <ConnectionBars copy={copy} connected={connected} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        side="top"
+        className="w-[min(21rem,calc(100vw-1rem))] p-4"
+      >
+        <section id="connection-details" aria-label="Connection details">
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
             <div>
               <p className={`text-sm font-semibold ${copy.text}`}>
@@ -182,7 +207,7 @@ export const ConnectionHealth = ({ isIdle, open, onOpenChange }) => {
             </div>
           ) : null}
         </section>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 };
