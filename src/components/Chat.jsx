@@ -10,6 +10,7 @@ import {
   BellOff,
   ChevronDown,
   Hash,
+  ImagePlus,
   MessageSquare,
   Reply,
   Send,
@@ -21,6 +22,8 @@ import { getChatReactionSummary } from '../lib/chatProtocol';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { EmojiPicker } from './EmojiPicker';
+import { GifPicker } from './GifPicker';
+import { prepareChatImage } from '../lib/chatMedia';
 
 const timeFormatter = new Intl.DateTimeFormat([], {
   hour: 'numeric',
@@ -106,9 +109,11 @@ export const Chat = () => {
   const [announcement, setAnnouncement] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [mediaError, setMediaError] = useState('');
   const messagesRef = useRef(null);
   const composerRef = useRef(null);
   const launcherRef = useRef(null);
+  const imageInputRef = useRef(null);
   const isNearBottomRef = useRef(true);
   const previousMessageCountRef = useRef(chatMessages.length);
   const wasChatOpenRef = useRef(false);
@@ -241,6 +246,26 @@ export const Chat = () => {
   const handleReply = (message) => {
     setReplyingTo(message);
     window.requestAnimationFrame(() => composerRef.current?.focus());
+  };
+
+  const sendAttachment = (attachment) => {
+    if (sendMessage('', replyingTo?.id || null, attachment)) {
+      setReplyingTo(null);
+      setMediaError('');
+    } else {
+      setMediaError('The attachment could not be sent over this connection.');
+    }
+  };
+
+  const handleImageSelection = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      sendAttachment(await prepareChatImage(file));
+    } catch (error) {
+      setMediaError(error.message || 'The image could not be sent.');
+    }
   };
 
   const jumpToMessage = (messageId) => {
@@ -490,6 +515,21 @@ export const Chat = () => {
                       <div className="text-foreground/90 mt-0.5 text-[15px] leading-5 break-words whitespace-pre-wrap">
                         {message.text}
                       </div>
+                      {message.attachment ? (
+                        <a
+                          href={message.attachment.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 block max-w-sm overflow-hidden rounded-lg border border-white/10 bg-black"
+                        >
+                          <img
+                            src={message.attachment.url}
+                            alt={message.attachment.alt}
+                            className="max-h-72 w-full object-contain"
+                            loading="lazy"
+                          />
+                        </a>
+                      ) : null}
                       <MessageReactions
                         connected={connected}
                         message={message}
@@ -520,6 +560,14 @@ export const Chat = () => {
           onSubmit={handleSend}
           className="bg-panel border-t border-white/[0.06] px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="sr-only"
+            onChange={handleImageSelection}
+            aria-label="Choose an image to send"
+          />
           {replyingTo ? (
             <div className="bg-panel-raised mb-2 flex items-center gap-3 rounded-lg border border-white/[0.08] px-3 py-2">
               <Reply className="size-4 shrink-0 text-teal-300" />
@@ -548,11 +596,33 @@ export const Chat = () => {
             Message
           </label>
           <div className="bg-panel-raised focus-within:border-primary/30 focus-within:ring-focus/35 flex items-end gap-1 rounded-lg border border-white/[0.07] p-1 focus-within:ring-2">
-            <EmojiPicker
-              disabled={!connected}
-              label="Add emoji to message"
-              onSelect={handleComposerEmoji}
-            />
+            <div
+              className="flex shrink-0 items-center gap-px self-center border-r border-white/[0.07] pr-1"
+              aria-label="Message attachments"
+            >
+              <EmojiPicker
+                disabled={!connected}
+                label="Add emoji to message"
+                onSelect={handleComposerEmoji}
+                triggerClassName="size-10 rounded-md text-zinc-500 hover:text-zinc-100 md:size-8"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-10 rounded-md text-zinc-500 hover:text-zinc-100 md:size-8"
+                disabled={!connected}
+                onClick={() => imageInputRef.current?.click()}
+                aria-label="Send an image"
+              >
+                <ImagePlus className="size-4 md:size-3.5" />
+              </Button>
+              <GifPicker
+                disabled={!connected}
+                onSelect={sendAttachment}
+                triggerClassName="size-10 rounded-md text-zinc-500 hover:text-zinc-100 md:size-8"
+              />
+            </div>
             <Textarea
               ref={composerRef}
               id="chat-message"
@@ -567,19 +637,24 @@ export const Chat = () => {
               maxLength={2000}
               rows={1}
               disabled={!connected}
-              className="max-h-28 min-h-11 resize-none border-0 bg-transparent px-2.5 shadow-none focus-visible:bg-transparent focus-visible:ring-0"
+              className="max-h-28 min-h-10 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 shadow-none focus-visible:bg-transparent focus-visible:ring-0"
               aria-describedby="chat-composer-help"
             />
             <Button
               type="submit"
               size="icon"
-              className="size-11 rounded-lg"
+              className="size-10 shrink-0 rounded-md md:size-9"
               disabled={!connected || !text.trim()}
               aria-label="Send message"
             >
-              <Send className="size-4" />
+              <Send className="size-4 md:size-3.5" />
             </Button>
           </div>
+          {mediaError ? (
+            <p role="alert" className="mt-1.5 px-1 text-xs text-red-300">
+              {mediaError}
+            </p>
+          ) : null}
           <div
             id="chat-composer-help"
             className="mt-1.5 flex items-center justify-between px-1 text-[10px] text-zinc-600"

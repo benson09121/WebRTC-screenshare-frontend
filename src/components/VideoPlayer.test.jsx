@@ -33,6 +33,7 @@ const createContext = (overrides = {}) => ({
   requestMovieControl: vi.fn(),
   participantVolume: 100,
   screenVolume: 100,
+  setScreenVolume: vi.fn(),
   movieVolume: 100,
   setMovieVolume: vi.fn(),
   peerPresence: 'connected',
@@ -56,7 +57,9 @@ test('separates both participants from an external shared-content stage', () => 
     .getByRole('region', { name: 'Call participants' })
     .closest('main');
   expect(stage.className).toContain('shared-stage-with-participants');
-  expect(stage.querySelector('.shared-content-viewport')).toBeTruthy();
+  const viewport = stage.querySelector('.shared-content-viewport');
+  expect(viewport).toBeTruthy();
+  expect(viewport.dataset.stageLayout).toBe('inset');
   expect(
     screen.getByRole('button', { name: 'Focus Participant' }),
   ).toBeTruthy();
@@ -76,6 +79,36 @@ test('uses presentation mode as the explicit shared-content-only layout', () => 
   expect(
     screen.queryByRole('region', { name: 'Call participants' }),
   ).toBeNull();
+});
+
+test('keeps shared-screen actions inside one options menu', () => {
+  mockedContext.value = createContext({
+    externalWatchSession: null,
+    remoteScreenSharing: true,
+    remoteScreenStream: {
+      getVideoTracks: () => [{ readyState: 'live' }],
+    },
+    remoteShareSource: { kind: 'screen' },
+    selectedStageView: 'remote-screen',
+  });
+
+  render(<VideoPlayer isIdle={false} />);
+
+  expect(
+    screen.getByRole('button', { name: 'Their screen options' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Hide Their screen' }),
+  ).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Their screen options' }));
+  fireEvent.change(
+    screen.getByRole('slider', { name: 'Shared-screen volume' }),
+    {
+      target: { value: '65' },
+    },
+  );
+  expect(mockedContext.value.setScreenVolume).toHaveBeenCalledWith('65');
 });
 
 test('keeps the view dock visible while fullscreen controls are idle', () => {

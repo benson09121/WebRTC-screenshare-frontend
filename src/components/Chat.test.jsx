@@ -27,6 +27,12 @@ const createContext = (overrides = {}) => ({
 });
 
 beforeEach(() => {
+  window.IntersectionObserver = class IntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  globalThis.IntersectionObserver = window.IntersectionObserver;
   window.matchMedia = vi.fn(() => ({ matches: true }));
   window.requestAnimationFrame = vi.fn((callback) => {
     callback();
@@ -92,6 +98,28 @@ test('opens from the persistent launcher while room chrome is idle', () => {
   expect(launcher.getAttribute('aria-hidden')).toBe('false');
   fireEvent.click(launcher);
   expect(setIsChatOpen).toHaveBeenCalledWith(true);
+});
+
+test('opens the full emoji picker above the chat panel', async () => {
+  mockedContext.value = createContext();
+
+  render(<Chat />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add emoji to message' }));
+
+  expect(await screen.findByPlaceholderText('Search all emoji')).toBeTruthy();
+});
+
+test('gives the composer field flexible width beside compact media actions', () => {
+  mockedContext.value = createContext();
+
+  render(<Chat />);
+
+  const composer = screen.getByLabelText('Message');
+  expect(composer.className).toContain('flex-1');
+  expect(composer.className).toContain('min-w-0');
+  expect(
+    screen.getByRole('button', { name: 'Send message' }).className,
+  ).toContain('md:size-9');
 });
 
 test('sends a reply reference and clears the reply composer', () => {

@@ -1457,13 +1457,14 @@ export const WebRTCProvider = ({ children }) => {
   };
   recoverConnectionRef.current = recoverConnection;
 
-  const sendMessage = (text, replyToId = null) => {
+  const sendMessage = (text, replyToId = null, attachment = null) => {
     const channel = dataChannelRef.current;
     const payload = createChatMessagePayload({
       clientId: clientIdRef.current,
       sequence: messageSequenceRef.current++,
       text,
       replyToId,
+      attachment,
     });
     if (!payload || !channel || channel.readyState !== 'open') {
       console.warn('Data channel is not open');
@@ -1471,7 +1472,12 @@ export const WebRTCProvider = ({ children }) => {
     }
 
     const message = normalizeChatMessagePayload(payload, 'local');
-    channel.send(JSON.stringify(payload));
+    try {
+      channel.send(JSON.stringify(payload));
+    } catch (error) {
+      console.warn('Chat message could not be sent', error);
+      return false;
+    }
     const nextMessages = appendUniqueChatMessage(
       chatMessagesRef.current,
       message,

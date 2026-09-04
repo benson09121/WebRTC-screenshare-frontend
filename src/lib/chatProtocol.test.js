@@ -119,15 +119,20 @@ test('applies desired reaction state idempotently per participant', () => {
   ]);
 });
 
-test('rejects unknown emojis and invalid reaction targets', () => {
-  assert.equal(
+test('accepts Unicode emoji and rejects invalid reaction targets', () => {
+  assert.deepEqual(
     normalizeChatReactionPayload({
       type: 'chat-reaction',
       messageId: 'peer:1:0',
       emoji: '🪄',
       active: true,
     }),
-    null,
+    {
+      type: 'chat-reaction',
+      messageId: 'peer:1:0',
+      emoji: '🪄',
+      active: true,
+    },
   );
   assert.equal(
     normalizeChatReactionPayload({
@@ -138,4 +143,30 @@ test('rejects unknown emojis and invalid reaction targets', () => {
     }),
     null,
   );
+});
+
+test('allows validated image-only and GIF chat messages', () => {
+  const image = createChatMessagePayload({
+    clientId: 'local',
+    sequence: 1,
+    text: '',
+    attachment: {
+      kind: 'image',
+      url: 'data:image/webp;base64,YQ==',
+      alt: 'photo.webp',
+    },
+  });
+  assert.equal(normalizeChatMessagePayload(image).attachment.kind, 'image');
+
+  const gif = createChatMessagePayload({
+    clientId: 'local',
+    sequence: 2,
+    text: '',
+    attachment: {
+      kind: 'gif',
+      url: 'https://media.giphy.com/example.gif',
+      alt: 'Reaction GIF',
+    },
+  });
+  assert.equal(normalizeChatMessagePayload(gif).attachment.kind, 'gif');
 });

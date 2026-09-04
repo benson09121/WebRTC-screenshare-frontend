@@ -11,6 +11,7 @@ This document outlines the UI behaviors and conditions implemented.
 
 - **Condition:** Triggers after 3 seconds without pointer, click, or keyboard activity anywhere on the screen.
 - **Behavior:** The dashboard may fade after three seconds of inactivity and returns on pointer, keyboard, or forwarded provider activity. The participant/content dock and Chat launcher remain reachable while idle, including in fullscreen. Only explicit focus mode hides the dock. There is no separate dashboard reveal handle. An already open chat stays open until the user closes it, and activity inside chat remains scoped to chat.
+- **Shared-stage placement:** During sharing or synchronized playback, use the lowest safe row for a compact icon-only dashboard. Place the participant/source dock immediately above it and keep both below the inset media viewport.
 
 ## 3. Fullscreen Constraints
 
@@ -27,7 +28,7 @@ This document outlines the UI behaviors and conditions implemented.
 - **Condition:** Active below a selected local/remote screen, shared movie, or external watch provider whenever presentation mode is off.
 - **Behavior:** Keeps labeled shared-content, `Participant`, and `You` tiles in a compact bottom dock that is visually separate from the selected content. Activating any tile focuses that source locally and marks it with a teal selected state; there is no duplicate view-switch toolbar. Camera-off tiles retain selectable avatar placeholders. Secondary actions live behind one ellipsis button per tile.
 - **Focus control:** Keep one down-arrow at the trailing edge of the dock itself. It must not share the dashboard's bottom-center anchor. Focus mode hides the dock; a persistent restore arrow exits focus mode.
-- **Reserved viewport:** While the dock is present, render native screen shares, uploaded/direct-link movies, focused cameras, and external provider iframes inside one shared-content viewport whose bottom edge clears both the dashboard and dock. Recalculate fitted movie dimensions from that viewport, not the full browser stage. Removing the dock in focus mode restores the full available stage.
+- **Reserved viewport:** While the dock is present, render native screen shares, uploaded/direct-link movies, focused cameras, and external provider iframes inside one rounded shared-content viewport with a responsive black gutter on its top and inline edges; its bottom edge clears both the dashboard and dock. Recalculate fitted movie dimensions from that viewport, not the full browser stage. Removing the dock in focus mode restores the full available stage.
 
 ## 6. Fullscreen Auto-hide (Global Idle State)
 
@@ -38,6 +39,7 @@ This document outlines the UI behaviors and conditions implemented.
 
 - **Condition:** The participant opens Chat while a screen share is fullscreen.
 - **Behavior:** Chat opens as a 340px docked rail on wide screens, reserving layout space so it does not cover shared content or camera tiles. On narrow screens it becomes a full-width right drawer over a dismissible scrim. Closing Chat returns the stage to its full available width.
+- **Composer:** Give the message textarea flexible width and keep it visually dominant. Emoji, image, and GIF actions form one compact leading cluster; Send is a small trailing square. Preserve larger touch targets below the desktop breakpoint.
 - **Ordinary room:** The same responsive behavior applies to camera calls, native shared content, and external providers. During external-provider playback, the closed launcher sits at the right-center instead of covering the provider's bottom-right controls.
 - **Keyboard behavior:** The launcher and close control are keyboard reachable; `Enter` sends, `Shift+Enter` inserts a newline, `Escape` closes the panel, and new messages are announced through a polite live region.
 - **Replies:** A reply action selects one existing message, shows a cancellable composer preview, and sends only its validated message ID with the new message. Render a one-level quoted preview; activating it scrolls to and briefly highlights the original. If it is unavailable, show a restrained fallback. Reply state remains ephemeral and database-free.

@@ -677,7 +677,10 @@ export default function ExternalWatchParty({ isIdle }) {
       aria-label={`Watching ${externalWatchSession.media.title}`}
       data-idle-exempt="true"
     >
-      <div className="shared-content-viewport">
+      <div
+        className="shared-content-viewport"
+        data-stage-layout={showParticipantDock ? 'inset' : 'full'}
+      >
         <iframe
           title={`${activeProvider?.name || 'Provider'} player for ${externalWatchSession.media.title}`}
           src={embedUrl}

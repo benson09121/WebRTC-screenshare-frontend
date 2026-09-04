@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
-import { Search, SmilePlus } from 'lucide-react';
-import { CHAT_EMOJIS } from '../lib/chatProtocol';
+import React, { Suspense, useState } from 'react';
+import { SmilePlus } from 'lucide-react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+
+const Picker = React.lazy(() => import('emoji-picker-react'));
 
 export const EmojiPicker = ({
   onSelect,
@@ -12,42 +12,26 @@ export const EmojiPicker = ({
   align = 'start',
   side = 'top',
   compact = false,
+  triggerClassName = '',
 }) => {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const searchRef = useRef(null);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const emojis = normalizedQuery
-    ? CHAT_EMOJIS.filter(
-        (item) =>
-          item.label.toLocaleLowerCase().includes(normalizedQuery) ||
-          item.keywords.includes(normalizedQuery) ||
-          item.emoji.includes(normalizedQuery),
-      )
-    : CHAT_EMOJIS;
 
-  const handleOpenChange = (nextOpen) => {
-    setOpen(nextOpen);
-    if (!nextOpen) setQuery('');
-  };
-
-  const handleSelect = (emoji) => {
+  const handleSelect = ({ emoji }) => {
     onSelect(emoji);
     setOpen(false);
-    setQuery('');
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          className={
+          className={`${
             compact
               ? 'size-7 rounded-lg text-zinc-500 hover:text-zinc-100'
               : 'size-11'
-          }
+          } ${triggerClassName}`}
           disabled={disabled}
           aria-label={label}
           title={label}
@@ -59,47 +43,27 @@ export const EmojiPicker = ({
         data-chat-emoji-picker="true"
         align={align}
         side={side}
-        className="w-[min(18rem,calc(100vw-1.5rem))] p-3"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          searchRef.current?.focus();
-        }}
+        className="w-auto overflow-hidden p-0"
       >
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-zinc-500" />
-          <Input
-            ref={searchRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search emoji"
-            className="h-9 pl-9 text-xs"
-            aria-label="Search emoji"
+        <Suspense
+          fallback={
+            <div className="grid h-72 w-[min(22rem,calc(100vw-1.5rem))] place-items-center text-xs text-zinc-500">
+              Loading emoji…
+            </div>
+          }
+        >
+          <Picker
+            onEmojiClick={handleSelect}
+            autoFocusSearch
+            emojiStyle="native"
+            theme="dark"
+            lazyLoadEmojis
+            previewConfig={{ showPreview: false }}
+            width="min(22rem, calc(100vw - 1.5rem))"
+            height={420}
+            searchPlaceHolder="Search all emoji"
           />
-        </div>
-        {emojis.length ? (
-          <div
-            className="mt-2 grid grid-cols-5 gap-1"
-            role="group"
-            aria-label="Emoji choices"
-          >
-            {emojis.map((item) => (
-              <Button
-                key={item.emoji}
-                variant="ghost"
-                size="icon"
-                className="size-10 text-lg"
-                onClick={() => handleSelect(item.emoji)}
-                aria-label={item.label}
-              >
-                <span aria-hidden="true">{item.emoji}</span>
-              </Button>
-            ))}
-          </div>
-        ) : (
-          <p className="py-5 text-center text-xs text-zinc-500">
-            No matching emoji
-          </p>
-        )}
+        </Suspense>
       </PopoverContent>
     </Popover>
   );

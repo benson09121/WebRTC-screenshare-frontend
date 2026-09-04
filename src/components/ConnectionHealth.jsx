@@ -97,7 +97,7 @@ export const ConnectionHealth = ({ open, onOpenChange }) => {
         <Button
           variant="secondary"
           size="icon"
-          className="size-10 sm:size-11"
+          className="size-10 sm:size-9"
           aria-label={`${statusLabel}. Open connection details`}
           title={statusLabel}
           data-connection-quality={quality}

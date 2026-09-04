@@ -28,6 +28,7 @@ PairBeam is a database-free WebRTC room for two people to call, share screens or
 - Lets each listener independently adjust participant voice, shared-screen audio, and shared-movie audio without changing what the other person hears
 - Floats the participant, local camera, or active video above the desktop with browser Picture-in-Picture support
 - Keeps chat available beside fullscreen content without covering the shared screen
+- Supports full Unicode emoji and reactions, bounded peer-to-peer image attachments, and optional GIPHY-powered GIF search without storing chat media
 - Shows actual screen capture/encoded resolution, FPS, bitrate, connection health, and direct or TURN-relayed status
 - Reconnects signaling and lets a participant rejoin the same temporary room
 
@@ -96,6 +97,7 @@ Create a `.env.local` file in the frontend repository when the signaling or TURN
 ```dotenv
 VITE_WS_URL=wss://signal.example.com
 VITE_TMDB_READ_ACCESS_TOKEN=tmdb-application-read-token
+VITE_GIPHY_API_KEY=origin-restricted-public-giphy-key
 VITE_STUN_URLS=stun:stun.example.com:3478
 VITE_TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:443?transport=tcp
 VITE_TURN_USERNAME=deployment-username
@@ -105,6 +107,8 @@ VITE_TURN_PASSWORD=deployment-credential
 `VITE_STUN_URLS` and `VITE_TURN_URLS` accept comma-separated URLs; the singular `VITE_TURN_URL` remains supported. TURN is optional during local development but strongly recommended for production reliability across restrictive networks. Use short-lived TURN credentials where your provider supports them, and never commit credentials to the repository.
 
 The catalog intentionally runs entirely in the frontend. `VITE_TMDB_READ_ACCESS_TOKEN` is therefore embedded in the public Vite bundle and visible to visitors. Use only a restricted, replaceable TMDB application read token—never a TMDB user/session credential. Catalog results are metadata only and do not imply that PairBeam or another provider can play that title.
+
+The optional GIF picker calls GIPHY directly from each browser. `VITE_GIPHY_API_KEY` is also embedded in the public bundle, so use a dedicated application key restricted to PairBeam's deployed origins. Selected GIFs are sent as HTTPS URLs and loaded independently by each participant. Uploaded chat images are resized and compressed in the sender's browser before crossing the WebRTC data channel; neither type is persisted after the room closes.
 
 Cross-origin provider pages do not expose the complete inbound play/pause/seek contract PairBeam needs. The repository therefore includes a cross-browser MV3 companion-extension prototype for controlled personal testing. PairBeam detects desktop Firefox versus Chrome/Chromium and offers the matching ZIP and instructions. One audited bridge implementation is packaged with separate manifests: Chromium receives `background.service_worker`, while Firefox receives `background.scripts`. The extension observes an ordinary video element only on the exact provider/player origins listed in its manifest and transports playback commands through PairBeam. It does not extract, proxy, download, or WebRTC-relay provider media. Technical embeddability does not establish content distribution rights.
 

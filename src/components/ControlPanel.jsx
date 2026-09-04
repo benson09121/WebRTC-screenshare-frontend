@@ -1645,7 +1645,7 @@ export const ControlPanel = ({ isIdle }) => {
       <>
         <div
           id="call-dashboard"
-          className={`absolute bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-end gap-4 transition-[opacity,transform] duration-200 ease-out hover:!translate-y-0 hover:!opacity-100 motion-reduce:transition-none sm:bottom-8 ${dashboardHidden ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`}
+          className={`absolute bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-end gap-2 transition-[opacity,transform] duration-200 ease-out hover:!translate-y-0 hover:!opacity-100 motion-reduce:transition-none sm:bottom-8 ${dashboardHidden ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100'}`}
           aria-hidden={dashboardHidden}
           inert={dashboardHidden}
         >
@@ -1880,7 +1880,7 @@ export const ControlPanel = ({ isIdle }) => {
           )}
 
           {/* Control Bar */}
-          <div className="bg-surface flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-full border border-white/10 p-1.5 shadow-xl backdrop-blur-2xl sm:gap-2 sm:p-2 sm:px-4">
+          <div className="bg-surface flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-full border border-white/10 p-1 shadow-xl backdrop-blur-2xl sm:px-2">
             <div
               className="flex items-center gap-px"
               role="group"
@@ -1889,7 +1889,7 @@ export const ControlPanel = ({ isIdle }) => {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    className="size-10 rounded-r-md sm:size-11"
+                    className="size-10 rounded-r-md sm:size-9"
                     variant={isMuted ? 'destructive' : 'secondary'}
                     size="icon"
                     onClick={toggleMute}
@@ -1916,7 +1916,7 @@ export const ControlPanel = ({ isIdle }) => {
               >
                 <PopoverTrigger asChild>
                   <Button
-                    className="h-10 w-6 rounded-l-md px-0 sm:h-11 sm:w-7"
+                    className="h-10 w-6 rounded-l-md px-0 sm:h-9 sm:w-6"
                     variant={
                       activeSettingsMenu === 'microphone'
                         ? 'active'
@@ -1994,7 +1994,7 @@ export const ControlPanel = ({ isIdle }) => {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    className="size-10 rounded-r-md sm:size-11"
+                    className="size-10 rounded-r-md sm:size-9"
                     variant={isCameraOff ? 'destructive' : 'secondary'}
                     size="icon"
                     onClick={toggleCamera}
@@ -2021,7 +2021,7 @@ export const ControlPanel = ({ isIdle }) => {
               >
                 <PopoverTrigger asChild>
                   <Button
-                    className="h-10 w-6 rounded-l-md px-0 sm:h-11 sm:w-7"
+                    className="h-10 w-6 rounded-l-md px-0 sm:h-9 sm:w-6"
                     variant={
                       activeSettingsMenu === 'camera' ? 'active' : 'secondary'
                     }
@@ -2092,7 +2092,7 @@ export const ControlPanel = ({ isIdle }) => {
               >
                 <PopoverTrigger asChild>
                   <Button
-                    className={`size-10 sm:size-11 ${localShareSource?.kind === 'screen' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
+                    className={`size-10 sm:size-9 ${localShareSource?.kind === 'screen' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
                     variant={
                       localShareSource?.kind === 'screen'
                         ? 'active'
@@ -2274,7 +2274,7 @@ export const ControlPanel = ({ isIdle }) => {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  className="size-10 sm:size-11"
+                  className="size-10 sm:size-9"
                   variant={
                     localShareSource?.kind === 'movie' ? 'active' : 'secondary'
                   }
@@ -2323,10 +2323,9 @@ export const ControlPanel = ({ isIdle }) => {
             <Button
               variant="destructive"
               onClick={handleLeaveRoom}
-              className="size-10 px-0 sm:h-11 sm:w-auto sm:px-4"
+              className="size-10 px-0 sm:size-9"
             >
               <PhoneOff className="size-5" />
-              <span className="hidden sm:inline">Leave</span>
             </Button>
           </div>
         </div>

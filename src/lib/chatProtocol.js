@@ -1,4 +1,5 @@
 export const CHAT_MESSAGE_MAX_LENGTH = 2000;
+export const CHAT_ATTACHMENT_MAX_LENGTH = 180_000;
 export const CHAT_MESSAGE_ID_MAX_LENGTH = 128;
 export const CHAT_SENT_AT_MAX = 8_640_000_000_000_000;
 
@@ -25,21 +26,66 @@ export const CHAT_EMOJIS = Object.freeze([
   { emoji: '🚀', label: 'Rocket', keywords: 'launch fast great' },
 ]);
 
-const CHAT_EMOJI_SET = new Set(CHAT_EMOJIS.map((item) => item.emoji));
 const CHAT_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
+const CHAT_EMOJI_PATTERN = /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/u;
+const CHAT_IMAGE_DATA_PATTERN =
+  /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/=]+$/i;
 
 export const isSupportedChatEmoji = (emoji) =>
-  typeof emoji === 'string' && CHAT_EMOJI_SET.has(emoji);
+  typeof emoji === 'string' &&
+  emoji.length > 0 &&
+  emoji.length <= 32 &&
+  emoji.trim() === emoji &&
+  !/\s/u.test(emoji) &&
+  CHAT_EMOJI_PATTERN.test(emoji);
+
+export const normalizeChatAttachment = (attachment) => {
+  if (!attachment || !['image', 'gif'].includes(attachment.kind)) return null;
+  const url = typeof attachment.url === 'string' ? attachment.url.trim() : '';
+  if (!url || url.length > CHAT_ATTACHMENT_MAX_LENGTH) return null;
+  if (attachment.kind === 'image' && !CHAT_IMAGE_DATA_PATTERN.test(url))
+    return null;
+  if (attachment.kind === 'gif') {
+    try {
+      const parsedUrl = new URL(url);
+      if (
+        parsedUrl.protocol !== 'https:' ||
+        !(
+          parsedUrl.hostname === 'giphy.com' ||
+          parsedUrl.hostname.endsWith('.giphy.com')
+        )
+      )
+        return null;
+    } catch {
+      return null;
+    }
+  }
+  return {
+    kind: attachment.kind,
+    url,
+    alt:
+      typeof attachment.alt === 'string'
+        ? attachment.alt.trim().slice(0, 120)
+        : attachment.kind === 'gif'
+          ? 'Shared GIF'
+          : 'Shared image',
+  };
+};
 
 export const createChatMessagePayload = ({
   clientId,
   sequence,
   text,
   replyToId = null,
+  attachment = null,
   now = Date.now(),
 }) => {
   const normalizedText = typeof text === 'string' ? text.trim() : '';
-  if (!normalizedText || normalizedText.length > CHAT_MESSAGE_MAX_LENGTH)
+  const normalizedAttachment = normalizeChatAttachment(attachment);
+  if (
+    (!normalizedText && !normalizedAttachment) ||
+    normalizedText.length > CHAT_MESSAGE_MAX_LENGTH
+  )
     return null;
   if (
     replyToId != null &&
@@ -69,6 +115,7 @@ export const createChatMessagePayload = ({
     text: normalizedText,
     sentAt,
   };
+  if (normalizedAttachment) payload.attachment = normalizedAttachment;
   if (replyToId) payload.replyToId = replyToId;
   return payload;
 };
@@ -92,10 +139,12 @@ export const normalizeChatMessagePayload = (payload, from = 'remote') => {
   )
     return null;
 
+  const normalizedText =
+    typeof payload.text === 'string' ? payload.text.trim() : '';
+  const attachment = normalizeChatAttachment(payload.attachment);
   if (
-    typeof payload.text !== 'string' ||
-    !payload.text.trim() ||
-    payload.text.length > CHAT_MESSAGE_MAX_LENGTH
+    (!normalizedText && !attachment) ||
+    normalizedText.length > CHAT_MESSAGE_MAX_LENGTH
   )
     return null;
 
@@ -108,11 +157,12 @@ export const normalizeChatMessagePayload = (payload, from = 'remote') => {
 
   return {
     id: payload.id,
-    text: payload.text,
+    text: normalizedText,
     from: from === 'local' ? 'local' : 'remote',
     sentAt: payload.sentAt,
     replyToId: payload.replyToId || null,
     reactions: {},
+    attachment,
   };
 };
 
