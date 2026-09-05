@@ -104,6 +104,9 @@ export const VideoPlayer = ({ isIdle }) => {
     remoteShareSource,
     requestMovieControl,
     participantVolume,
+    setParticipantVolume,
+    microphoneLevel,
+    setMicrophoneLevel,
     screenVolume,
     setScreenVolume,
     movieVolume,
@@ -116,6 +119,7 @@ export const VideoPlayer = ({ isIdle }) => {
 
   const mainVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
+  const sharedAudioRef = useRef(null);
   const remoteCameraVideoRef = useRef(null);
   const localVideoRef = useRef(null);
   const mediaViewportRef = useRef(null);
@@ -125,7 +129,9 @@ export const VideoPlayer = ({ isIdle }) => {
 
   const [selectedView, setSelectedView] = useState('remote-camera');
   const [hideMainVideo, setHideMainVideo] = useState(false);
-  const [isMirrored] = useState(true);
+  const [isMirrored, setIsMirrored] = useState(true);
+  const [remoteFlip, setRemoteFlip] = useState(false);
+  const [gridView, setGridView] = useState(false);
   const [pictureInPictureView, setPictureInPictureView] = useState(null);
   const [pictureInPictureError, setPictureInPictureError] = useState(null);
   const [screenViewMode, setScreenViewMode] = useState('fit');
@@ -289,7 +295,7 @@ export const VideoPlayer = ({ isIdle }) => {
     const video = localVideoRef.current;
     if (video && video.srcObject !== localStream)
       video.srcObject = localStream || null;
-  }, [localStream, isCameraOff]);
+  }, [localStream, isCameraOff, dockMounted]);
 
   useEffect(() => {
     const video = mainVideoRef.current;
@@ -358,7 +364,13 @@ export const VideoPlayer = ({ isIdle }) => {
     const video = remoteCameraVideoRef.current;
     if (video && video.srcObject !== remoteStream)
       video.srcObject = remoteStream || null;
-  }, [externalWatchSession, remoteStream, remoteCameraOff, selectedView]);
+  }, [
+    externalWatchSession,
+    remoteStream,
+    remoteCameraOff,
+    selectedView,
+    dockMounted,
+  ]);
 
   useEffect(() => {
     const audio = remoteAudioRef.current;
@@ -374,6 +386,23 @@ export const VideoPlayer = ({ isIdle }) => {
     const audio = remoteAudioRef.current;
     if (audio) audio.volume = participantVolume / 100;
   }, [participantVolume, remoteStream]);
+
+  useEffect(() => {
+    const audio = sharedAudioRef.current;
+    const tracks = remoteScreenStream?.getAudioTracks?.() || [];
+    audio.srcObject = tracks.length ? new MediaStream(tracks) : null;
+    return () => {
+      audio.srcObject = null;
+    };
+  }, [remoteScreenStream]);
+
+  useEffect(() => {
+    sharedAudioRef.current.volume =
+      getRemoteContentVolume(remoteShareSource?.kind, {
+        screen: screenVolume,
+        movie: movieVolume,
+      }) / 100;
+  }, [screenVolume, movieVolume, remoteShareSource?.kind]);
 
   useEffect(() => {
     const video = mainVideoRef.current;
@@ -504,6 +533,11 @@ export const VideoPlayer = ({ isIdle }) => {
   };
 
   const selectStageView = (view) => {
+    if (view === selectedStageView && view.endsWith('-screen') && !gridView) {
+      setGridView(true);
+      return;
+    }
+    setGridView(false);
     setSelectedStageView(view);
     if (view !== 'external-watch') setSelectedView(view);
   };
@@ -604,6 +638,7 @@ export const VideoPlayer = ({ isIdle }) => {
     label,
     icon,
     videoRef,
+    stream,
     mirrored = false,
   }) => {
     const selected = selectedStageView === view;
@@ -616,13 +651,20 @@ export const VideoPlayer = ({ isIdle }) => {
           aria-label={`Focus ${label}`}
           aria-pressed={selected}
         >
-          {videoRef ? (
+          {videoRef || stream ? (
             <video
-              ref={videoRef}
+              ref={
+                stream
+                  ? (video) => {
+                      if (video && video.srcObject !== stream)
+                        video.srcObject = stream;
+                    }
+                  : videoRef
+              }
               autoPlay
               playsInline
               muted
-              className={`size-full object-cover ${mirrored ? 'scale-x-[-1]' : ''}`}
+              className={`size-full ${stream ? 'object-contain' : 'object-cover'} ${mirrored ? 'scale-x-[-1]' : ''}`}
             />
           ) : (
             <span className="grid size-full place-items-center text-zinc-500">
@@ -633,13 +675,77 @@ export const VideoPlayer = ({ isIdle }) => {
             {label}
           </span>
         </button>
+        {view.endsWith('-camera') ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="secondary"
+                size="icon"
+                className="absolute top-1 right-1 size-8 bg-black/70"
+                aria-label={`${label} tile settings`}
+              >
+                <Ellipsis className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="end">
+              {view === 'remote-camera' ? (
+                <label className="block text-xs">
+                  Participant microphone volume · {participantVolume}%
+                  <input
+                    aria-label="Participant microphone volume"
+                    className="mt-3 w-full accent-teal-300"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={participantVolume}
+                    onChange={(event) =>
+                      setParticipantVolume(event.target.value)
+                    }
+                  />
+                  <span className="mt-2 block text-zinc-400">
+                    Changes how loudly you hear their microphone.
+                  </span>
+                </label>
+              ) : (
+                <label className="block text-xs">
+                  Your microphone level · {microphoneLevel}%
+                  <input
+                    aria-label="Your microphone level"
+                    className="mt-3 w-full accent-teal-300"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={microphoneLevel}
+                    onChange={(event) =>
+                      setMicrophoneLevel(Number(event.target.value))
+                    }
+                  />
+                  <span className="mt-2 block text-zinc-400">
+                    Changes the microphone level you send.
+                  </span>
+                </label>
+              )}
+              <Button
+                variant="ghost"
+                className="mt-2 w-full"
+                onClick={() =>
+                  view === 'local-camera'
+                    ? setIsMirrored((value) => !value)
+                    : setRemoteFlip((value) => !value)
+                }
+              >
+                Mirror horizontally
+              </Button>
+            </PopoverContent>
+          </Popover>
+        ) : null}
       </div>
     );
   };
 
   const renderParticipantDock = () => (
     <div
-      className={`participant-dock absolute inset-x-3 bottom-3 z-[70] flex items-stretch justify-start gap-2 overflow-x-auto px-1 pb-1 sm:inset-x-4 sm:bottom-4 md:justify-center ${showParticipantDock ? 'participant-dock--enter' : 'participant-dock--exit'}`}
+      className={`participant-dock ${gridView ? 'participant-dock--grid' : ''} absolute inset-x-3 bottom-3 z-[70] flex items-stretch justify-start gap-2 overflow-x-auto px-1 pb-1 sm:inset-x-4 sm:bottom-4 md:justify-center ${showParticipantDock ? 'participant-dock--enter' : 'participant-dock--exit'}`}
       role="region"
       aria-label="Call participants"
       aria-hidden={showParticipantDock ? undefined : true}
@@ -649,6 +755,7 @@ export const VideoPlayer = ({ isIdle }) => {
         ? renderDockTile({
             view: 'remote-screen',
             label: remoteContentLabel,
+            stream: remoteScreenStream,
             icon:
               remoteShareSource?.kind === 'movie' ? (
                 <Film className="size-6" />
@@ -661,6 +768,7 @@ export const VideoPlayer = ({ isIdle }) => {
         ? renderDockTile({
             view: 'local-screen',
             label: localContentLabel,
+            stream: localScreenStream,
             icon:
               localShareSource?.kind === 'movie' ? (
                 <Film className="size-6" />
@@ -682,7 +790,7 @@ export const VideoPlayer = ({ isIdle }) => {
         icon: <User className="size-6" />,
         videoRef:
           remoteStream && !remoteCameraOff ? remoteCameraVideoRef : null,
-        mirrored: remoteMirrored,
+        mirrored: remoteMirrored !== remoteFlip,
       })}
       {renderDockTile({
         view: 'local-camera',
@@ -709,6 +817,11 @@ export const VideoPlayer = ({ isIdle }) => {
         className={`call-stage group relative flex h-full w-full items-center justify-center overflow-hidden ${usesBlackStage ? 'bg-black' : 'bg-bg'} ${isChatOpen ? 'call-stage--chat-docked' : ''} ${showParticipantDock ? 'shared-stage-with-participants' : ''} ${activeMovie ? 'shared-stage-has-movie' : ''}`}
       >
         <audio ref={remoteAudioRef} autoPlay aria-label="Participant audio" />
+        <audio
+          ref={sharedAudioRef}
+          autoPlay
+          aria-label="Shared content audio"
+        />
         {pictureInPictureError ? (
           <div
             role="alert"
@@ -729,6 +842,7 @@ export const VideoPlayer = ({ isIdle }) => {
         <div
           ref={mediaViewportRef}
           className="shared-content-viewport"
+          style={gridView ? { visibility: 'hidden' } : undefined}
           data-stage-layout={showParticipantDock ? 'inset' : 'full'}
         >
           {showStreamLoading ? (
@@ -754,7 +868,7 @@ export const VideoPlayer = ({ isIdle }) => {
                     ref={mainVideoRef}
                     autoPlay
                     playsInline
-                    muted={selectedView !== 'remote-screen'}
+                    muted={!directMovieUrl}
                     onLoadedMetadata={syncMainVideoSize}
                     onResize={syncMainVideoSize}
                     onDoubleClick={toggleFullscreen}
@@ -787,10 +901,10 @@ export const VideoPlayer = ({ isIdle }) => {
               ref={mainVideoRef}
               autoPlay
               playsInline
-              muted={selectedView === 'local-camera'}
+              muted
               onDoubleClick={toggleFullscreen}
               aria-label={`${mainLabel} video`}
-              className={`size-full object-contain ${selectedView === 'remote-camera' && remoteMirrored ? 'scale-x-[-1]' : ''} ${selectedView === 'local-camera' && isMirrored ? 'scale-x-[-1]' : ''}`}
+              className={`size-full object-contain ${selectedView === 'remote-camera' && remoteMirrored !== remoteFlip ? 'scale-x-[-1]' : ''} ${selectedView === 'local-camera' && isMirrored ? 'scale-x-[-1]' : ''}`}
             />
           )}
         </div>

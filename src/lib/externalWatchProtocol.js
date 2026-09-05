@@ -1,10 +1,11 @@
 import {
   buildProviderEmbedUrl,
   isExternalWatchProviderId,
+  getExternalWatchProvider,
 } from './externalWatchProviders';
 
 const WATCH_ID_PATTERN = /^[a-zA-Z0-9_-]{8,96}$/;
-const MEDIA_TYPES = new Set(['movie', 'tv']);
+const MEDIA_TYPES = new Set(['movie', 'tv', 'anime']);
 const COMMANDS = new Set(['play', 'pause', 'seek']);
 
 const boundedText = (value, maximum) =>
@@ -22,18 +23,26 @@ export const normalizeExternalWatchMedia = (value) => {
     !MEDIA_TYPES.has(value.mediaType)
   )
     return null;
-  const tmdbId = positiveInteger(value.tmdbId);
-  if (!tmdbId) return null;
+  const anime = value.mediaType === 'anime';
+  if (anime !== (getExternalWatchProvider(value.providerId).catalog === 'anilist')) return null;
+  const sourceId = positiveInteger(anime ? value.anilistId : value.tmdbId);
+  if (!sourceId) return null;
   const title = boundedText(value.title, 160);
   if (!title) return null;
 
   const media = {
     providerId: value.providerId,
     mediaType: value.mediaType,
-    tmdbId,
+    ...(anime ? { anilistId: sourceId } : { tmdbId: sourceId }),
     title,
     posterPath: boundedText(value.posterPath, 240) || null,
   };
+  if (anime) {
+    media.episode = positiveInteger(value.episode);
+    if (!media.episode || !['sub', 'dub'].includes(value.audioLanguage)) return null;
+    media.audioLanguage = value.audioLanguage;
+    media.episodeTitle = boundedText(value.episodeTitle, 160) || null;
+  }
   if (value.mediaType === 'tv') {
     media.season = positiveInteger(value.season);
     media.episode = positiveInteger(value.episode);
@@ -94,7 +103,7 @@ export const normalizeExternalWatchEpisodeRequest = (value) => {
   )
     return null;
   const media = normalizeExternalWatchMedia(value.media);
-  return media?.mediaType === 'tv'
+  return ['tv', 'anime'].includes(media?.mediaType)
     ? {
         type: value.type,
         proposalId: value.proposalId,
@@ -113,7 +122,7 @@ export const normalizeExternalWatchMediaState = (value) => {
   )
     return null;
   const media = normalizeExternalWatchMedia(value.media);
-  return media?.mediaType === 'tv'
+  return ['tv', 'anime'].includes(media?.mediaType)
     ? {
         type: value.type,
         proposalId: value.proposalId,

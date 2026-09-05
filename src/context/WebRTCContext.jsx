@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useSignaling } from '../hooks/useSignaling';
+import { createCallSoundPlayer, getCallSound } from '../lib/callSounds';
 import {
   EMPTY_CONNECTION_STATS,
   summarizeWebRTCStats,
@@ -71,10 +72,11 @@ const getIceServers = () => {
 
 const isSameExternalSeries = (session, media) =>
   Boolean(
-    session?.media?.mediaType === 'tv' &&
-    media?.mediaType === 'tv' &&
+    ['tv', 'anime'].includes(session?.media?.mediaType) &&
+    media?.mediaType === session.media.mediaType &&
     session.media.providerId === media.providerId &&
-    session.media.tmdbId === media.tmdbId,
+    session.media.tmdbId === media.tmdbId &&
+    session.media.anilistId === media.anilistId,
   );
 
 const isSameExternalMedia = (left, right) =>
@@ -84,6 +86,9 @@ const isSameExternalMedia = (left, right) =>
     left.providerId === right.providerId &&
     left.mediaType === right.mediaType &&
     left.tmdbId === right.tmdbId &&
+    left.anilistId === right.anilistId &&
+    (left.mediaType !== 'anime' ||
+      (left.episode === right.episode && left.audioLanguage === right.audioLanguage)) &&
     (left.mediaType !== 'tv' ||
       (left.season === right.season && left.episode === right.episode)),
   );
@@ -124,6 +129,20 @@ export const WebRTCProvider = ({ children }) => {
   const startCallRef = useRef(null);
   const messageSequenceRef = useRef(0);
   const notificationAudioContextRef = useRef(null);
+  const callSoundPlayerRef = useRef(null);
+
+  useEffect(() => {
+    const player = createCallSoundPlayer();
+    callSoundPlayerRef.current = player;
+    window.addEventListener('pointerdown', player.unlock, { passive: true });
+    window.addEventListener('keydown', player.unlock);
+    return () => {
+      window.removeEventListener('pointerdown', player.unlock);
+      window.removeEventListener('keydown', player.unlock);
+      player.dispose();
+      callSoundPlayerRef.current = null;
+    };
+  }, []);
   const lastNotificationSoundAtRef = useRef(0);
   const clientIdRef = useRef(null);
   if (!clientIdRef.current) {
@@ -177,6 +196,40 @@ export const WebRTCProvider = ({ children }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [selectedStageView, setSelectedStageView] = useState('remote-camera');
+  const [microphoneLevel, setMicrophoneLevel] = useState(100);
+  const microphoneGainRef = useRef(null);
+
+  useEffect(() => {
+    const track = localStream?.getAudioTracks()[0];
+    if (!track) return undefined;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return undefined;
+    const context = new AudioContextClass();
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    const gain = context.createGain();
+    const destination = context.createMediaStreamDestination();
+    gain.gain.value = microphoneLevel / 100;
+    source.connect(gain).connect(destination);
+    microphoneGainRef.current = gain;
+    const output = destination.stream.getAudioTracks()[0];
+    outgoingAudioTrackRef.current = output;
+    getSender('audio')?.replaceTrack(output).catch(console.warn);
+    context.resume().catch(console.warn);
+    return () => {
+      microphoneGainRef.current = null;
+      source.disconnect();
+      gain.disconnect();
+      output.stop();
+      context.close().catch(console.warn);
+    };
+    // Rebuild only when capture changes; the level effect updates gain in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStream]);
+
+  useEffect(() => {
+    if (microphoneGainRef.current)
+      microphoneGainRef.current.gain.value = microphoneLevel / 100;
+  }, [microphoneLevel]);
 
   const setOutgoingExternalWatchProposal = useCallback((value) => {
     outgoingExternalWatchProposalRef.current = value;
@@ -405,6 +458,9 @@ export const WebRTCProvider = ({ children }) => {
   const handleDataMessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+      if (data?.playActionSound === true) {
+        callSoundPlayerRef.current?.play(getCallSound(data));
+      }
       if (
         data.type === 'mirror-toggle' &&
         typeof data.isMirrored === 'boolean'
@@ -1519,11 +1575,15 @@ export const WebRTCProvider = ({ children }) => {
   };
 
   const sendControlMessage = (data) => {
+    const sound = getCallSound(data);
+    if (sound) callSoundPlayerRef.current?.play(sound);
     if (
       dataChannelRef.current &&
       dataChannelRef.current.readyState === 'open'
     ) {
-      dataChannelRef.current.send(JSON.stringify(data));
+      dataChannelRef.current.send(
+        JSON.stringify(sound ? { ...data, playActionSound: true } : data),
+      );
     }
   };
 
@@ -1993,6 +2053,8 @@ export const WebRTCProvider = ({ children }) => {
         isPresentationMode,
         setIsPresentationMode,
         selectedStageView,
+        microphoneLevel,
+        setMicrophoneLevel,
         setSelectedStageView,
         isChatOpen,
         setIsChatOpen,

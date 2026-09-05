@@ -35,7 +35,7 @@ const PUBLISH_EVENTS = new Set([
 ]);
 const REQUEST_EVENTS = new Set(['play', 'pause', 'seeked']);
 const SEEK_SETTLE_DELAY_MS = 900;
-const REQUIRED_EXTENSION_VERSION = '0.5.1';
+const REQUIRED_EXTENSION_VERSION = '0.6.0';
 const EXTENSION_GUIDE_URL =
   'https://github.com/benson09121/WebRTC-screenshare-frontend/tree/main/extension';
 const EXTENSION_TARGETS = {
@@ -92,11 +92,11 @@ const supportsExtensionVersion = (version) => {
 
 const posterUrl = (path) =>
   path
-    ? `https://image.tmdb.org/t/p/w342${path.startsWith('/') ? path : `/${path}`}`
+    ? (/^https:\/\//.test(path) ? path : `https://image.tmdb.org/t/p/w342${path.startsWith('/') ? path : `/${path}`}`)
     : null;
 
 const episodeLabel = (media) =>
-  media?.mediaType === 'tv'
+  media?.mediaType === 'anime' ? `Episode ${media.episode} · ${media.audioLanguage === 'dub' ? 'English dub' : 'Japanese sub'}` : media?.mediaType === 'tv'
     ? `S${String(media.season).padStart(2, '0')} E${String(media.episode).padStart(2, '0')}${media.episodeTitle ? ` · ${media.episodeTitle}` : ''}`
     : null;
 
@@ -282,7 +282,7 @@ export default function ExternalWatchParty({ isIdle }) {
   const externalSeekResumeTimerRef = useRef(null);
   const activeWatchProposalId = externalWatchSession?.proposalId || null;
   const activeMediaIdentity = externalWatchSession?.media
-    ? `${externalWatchSession.media.mediaType}:${externalWatchSession.media.tmdbId}:${externalWatchSession.media.season || 0}:${externalWatchSession.media.episode || 0}`
+    ? `${externalWatchSession.media.mediaType}:${externalWatchSession.media.anilistId || externalWatchSession.media.tmdbId}:${externalWatchSession.media.season || 0}:${externalWatchSession.media.episode || 0}:${externalWatchSession.media.audioLanguage || ''}`
     : null;
   sessionRef.current = externalWatchSession;
 
@@ -756,7 +756,7 @@ export default function ExternalWatchParty({ isIdle }) {
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <p>
                 {playerError ||
-                  `The extension is connected and waiting for the ${activeProvider?.name || 'provider'} video element. Start the provider player if it remains idle.`}
+                  `The extension is connected and waiting for the ${activeProvider?.name || 'provider'} video element. Start the provider player if it remains idle. ${activeProvider?.availabilityWarning || ''}`}
               </p>
             </div>
           )}

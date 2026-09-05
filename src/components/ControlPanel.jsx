@@ -218,8 +218,8 @@ export const ControlPanel = ({ isIdle }) => {
     isPresentationMode,
     localShareSource,
     setLocalShareSource,
-    participantVolume,
-    setParticipantVolume,
+    microphoneLevel,
+    setMicrophoneLevel,
     screenVolume,
     setScreenVolume,
     movieVolume,
@@ -574,6 +574,7 @@ export const ControlPanel = ({ isIdle }) => {
         await updateCameraStream(nextStream);
       }
       setIsMuted(true);
+      sendControlMessage({ type: 'microphone-toggle', isMuted: true });
     } else {
       // Turn ON physical hardware
       try {
@@ -601,6 +602,7 @@ export const ControlPanel = ({ isIdle }) => {
           await updateCameraStream(newStream);
         }
         setIsMuted(false);
+        sendControlMessage({ type: 'microphone-toggle', isMuted: false });
 
         // Refresh device labels now that we definitely have active permissions
         getDevices();
@@ -1806,7 +1808,9 @@ export const ControlPanel = ({ isIdle }) => {
                   proposeExternalWatch({
                     providerId: item.providerId,
                     mediaType: item.mediaType,
-                    tmdbId: item.id,
+                    tmdbId: item.mediaType === 'anime' ? undefined : item.id,
+                    anilistId: item.anilistId,
+                    audioLanguage: item.audioLanguage,
                     title: item.title,
                     posterPath: item.posterPath,
                     season: item.season,
@@ -1977,10 +1981,10 @@ export const ControlPanel = ({ isIdle }) => {
                   <VolumeControl
                     id="participant-playback-volume"
                     icon={UserRound}
-                    label="Participant voice"
-                    description="The other participant's microphone on this device."
-                    value={participantVolume}
-                    onChange={setParticipantVolume}
+                    label="Your microphone level"
+                    description="How strongly your microphone is sent to the participant."
+                    value={microphoneLevel}
+                    onChange={(value) => setMicrophoneLevel(Number(value))}
                   />
                 </PopoverContent>
               </Popover>

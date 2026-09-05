@@ -1,6 +1,19 @@
 const provider = (config) => Object.freeze(config);
 
 export const EXTERNAL_WATCH_PROVIDERS = Object.freeze([
+  ...[
+    { id: 'anixo-extension', name: 'AniXo', origin: 'https://anixo.buzz', path: '/embed/ani' },
+    { id: 'supaplay-extension', name: 'SupaPlay', origin: 'https://supaplay.fun', path: '/stream/ani', availabilityWarning: 'Recent checks returned “Content Removed” for tested episodes. Other titles may vary; PairBeam cannot restore unavailable provider content.' },
+  ].map((config) => provider({
+    ...config,
+    catalog: 'anilist',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    description: 'Anime episodes with AniList search and sub/dub selection. Playback verification pending.',
+    status: 'Experimental',
+    buildEmbedUrl(media) {
+      return new URL(`${this.path}/${media.anilistId}/${media.episode}/${media.audioLanguage}`, this.origin).toString();
+    },
+  })),
   provider({
     id: 'vidking-extension',
     name: 'Vidking',

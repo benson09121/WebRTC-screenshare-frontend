@@ -15,6 +15,8 @@ const episode = {
 
 test('exposes the provider-first choices in a stable order', () => {
   expect(EXTERNAL_WATCH_PROVIDERS.map(({ id }) => id)).toEqual([
+    'anixo-extension',
+    'supaplay-extension',
     'vidking-extension',
     'zoryva-extension',
     '2embed-extension',

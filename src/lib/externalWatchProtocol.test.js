@@ -14,6 +14,23 @@ import {
   shouldPreserveExternalWatchSession,
 } from './externalWatchProtocol.js';
 
+test('anime providers preserve AniList identity, exact episode and language', () => {
+  for (const [providerId, origin, route] of [
+    ['anixo-extension', 'https://anixo.buzz', '/embed/ani'],
+    ['supaplay-extension', 'https://supaplay.fun', '/stream/ani'],
+  ]) {
+    const input = { providerId, mediaType: 'anime', anilistId: 154587, title: 'Frieren', episode: 2, audioLanguage: 'sub' };
+    const media = normalizeExternalWatchMedia(input);
+    assert.equal(media.anilistId, 154587);
+    assert.equal(media.tmdbId, undefined);
+    assert.equal(buildExternalWatchEmbedUrl(media), `${origin}${route}/154587/2/sub`);
+    assert.equal(normalizeExternalWatchMedia({ ...input, audioLanguage: 'invalid' }), null);
+    assert.equal(normalizeExternalWatchMedia({ ...input, episode: 0 }), null);
+    assert.equal(normalizeExternalWatchMedia({ ...input, providerId: 'vidking-extension' }), null);
+    assert.equal(normalizeExternalWatchMedia({ ...input, mediaType: 'movie', tmdbId: 154587 }), null);
+  }
+});
+
 test('creates a bounded Vidking movie proposal and embed URL', () => {
   const media = normalizeExternalWatchMedia({
     providerId: 'vidking-extension',

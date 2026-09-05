@@ -80,6 +80,10 @@ Catalog sources: [TMDB multi-search](https://developer.themoviedb.org/reference/
 
 ### P1 — shadcn-style chat, emoji, and message reactions
 
+- [x] Add original, quiet call-action chimes for both peers: microphone mute/unmute, camera on/off, and share start/stop. Play locally from explicit action messages, keep reconnect snapshots silent, unlock audio on interaction, and dispose audio resources on unmount.
+
+- [x] Keep incoming screen audio independent from camera focus, show live share previews in source tiles, and toggle a balanced source grid by activating the selected screen again. Participant tile menus provide listening volume and horizontal mirroring; the local tile and microphone menu expose outgoing microphone attenuation.
+
 - [ ] **P1 — Replace the custom chat dialog shell with a local shadcn-style Sheet on narrow screens and a semantic docked panel on wide screens.** Use ScrollArea for messages, Tooltip/DropdownMenu for message actions, Popover + Command for emoji, Avatar/fallbacks for speakers, and visible focus management.
 - [x] **P1 — Introduce shared chat message IDs before reactions.** The sender creates and transmits a bounded message ID and timestamp; both peers store the same ID. Duplicates and malformed IDs are rejected so reactions target the same message on both devices.
 - [x] **P1 — Add reactions to every message.** Hover, focus, and touch actions expose a curated emoji set; reaction chips show counts and local pressed state. Toggling sends an idempotent `chat-reaction` event and persists only for the room lifetime.
@@ -306,6 +310,23 @@ Research: [Vidstack text tracks](https://vidstack.io/docs/player/api/text-tracks
 - [x] Document the project-specific internship learning outcomes in [INTERNSHIP_REFLECTION.md](./INTERNSHIP_REFLECTION.md).
 
 ## Explicitly out of scope
+
+### Anime providers — integration in progress
+
+- [x] Add direct-browser AniList search and title metadata without a database or API secret.
+- [x] Add AniXo and SupaPlay choices, exact anime episode and sub/dub invitation identity.
+- [x] Include both embed origins in Chrome and Firefox extension source manifests.
+- [ ] Verify real provider video discovery and nested-frame origins; rebuild and version extension downloads.
+- [ ] Test two-browser anime play/pause/seek synchronization, episode changes, buffering and reconnect recovery.
+- [x] Add in-session anime episode and sub/dub selection.
+- [x] Package extension 0.6.0 for Chrome and Firefox; Firefox archive validation passes without warnings.
+- [x] Add DOM-based catalog regression coverage for both anime providers: AniList search, details, episode/dub choice and invitation payload.
+- [x] Verify live AniXo video responds to the extension content script in two Chromium pages: play advances both players; seek/pause leaves both paused at 60 seconds.
+- [ ] Verify the full room/extension message transport in two browser sessions. The live content-script check used a simulated extension message channel and does not prove end-to-end synchronization.
+
+Live check (2026-09-05): AniXo Frieren episode 1/sub reached HTML video readyState 4 with a 1559.92-second duration in Chromium. SupaPlay returned “Content Removed” for Frieren episode 1 and its documented One Piece episode 2 example. This does not prove all SupaPlay titles are unavailable. Two-browser synchronization remains unverified.
+
+Provider documentation is not proof of working playback; anime providers remain experimental until the playback checks pass.
 
 - Accounts, profiles, call history, stored messages, recordings, and analytics requiring persistent identifiers.
 - Server-side media recording or an SFU for group calls. Either would materially change the current private two-person P2P model.

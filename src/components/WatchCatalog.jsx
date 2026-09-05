@@ -21,6 +21,7 @@ import {
 import { Input } from './ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from './ui/sheet';
 import { tmdbCatalog } from '../lib/catalogApi';
+import { anilistCatalog } from '../lib/anilistApi';
 import {
   EXTERNAL_WATCH_PROVIDERS,
   getExternalWatchProvider,
@@ -33,7 +34,7 @@ const imageUrl = (path, size = 'w342') => {
 };
 
 const yearOf = (date) => (date ? String(date).slice(0, 4) : '—');
-const mediaLabel = (type) => (type === 'tv' ? 'TV series' : 'Movie');
+const mediaLabel = (type) => (type === 'anime' ? 'Anime' : type === 'tv' ? 'TV series' : 'Movie');
 const episodeCode = (episode) =>
   `S${String(episode.seasonNumber).padStart(2, '0')} E${String(episode.episodeNumber).padStart(2, '0')}`;
 
@@ -99,11 +100,11 @@ const Rating = ({ item }) =>
   item.rating == null ? null : (
     <span
       className="inline-flex items-center gap-1 text-[11px] text-amber-200"
-      title="TMDB rating"
+      title={`${item.ratingSource || 'TMDB'} rating`}
     >
       <Star className="size-3 fill-current" aria-hidden="true" />
       {Number(item.rating).toFixed(1)}{' '}
-      <span className="text-zinc-600">TMDB</span>
+      <span className="text-zinc-600">{item.ratingSource || 'TMDB'}</span>
     </span>
   );
 
@@ -216,6 +217,8 @@ const EpisodeList = ({ episodes, status, error, onWatch }) => {
 
 export const WatchCatalog = ({ open, onClose, onProposal }) => {
   const [selectedProviderId, setSelectedProviderId] = useState(null);
+  const [animeEpisode, setAnimeEpisode] = useState(1);
+  const [audioLanguage, setAudioLanguage] = useState('sub');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState('idle');
@@ -261,7 +264,9 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
       setStatus('loading');
       setError('');
       try {
-        const data = await tmdbCatalog.search(query, page, controller.signal);
+        const catalog = getExternalWatchProvider(selectedProviderId)?.catalog === 'anilist' ? anilistCatalog : tmdbCatalog;
+        const data = await catalog.search(query, page, controller.signal);
+        if (controller.signal.aborted) return;
         setResults(Array.isArray(data.results) ? data.results : []);
         setTotalPages(Number(data.totalPages) || 1);
         setStatus('ready');
@@ -285,16 +290,18 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
     detailAbortRef.current?.abort();
     detailAbortRef.current = controller;
     setSelected(item);
+    setAnimeEpisode(1);
     setDetailStatus('loading');
     setSeasonData(null);
     setSeason(1);
     setProposalError('');
     try {
-      const details = await tmdbCatalog.details(
+      const details = item.mediaType === 'anime' ? await anilistCatalog.details(item.id, controller.signal) : await tmdbCatalog.details(
         item.mediaType === 'tv' ? 'tv' : 'movie',
         item.id,
         controller.signal,
       );
+      if (controller.signal.aborted) return;
       setSelected({ ...item, ...details });
       setSeason(details.seasons?.[0]?.seasonNumber || 1);
       setDetailStatus('ready');
@@ -478,6 +485,7 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
                         </span>
                         <span className="text-muted-foreground mt-2 block text-xs leading-5">
                           {item.description}
+                          {item.availabilityWarning ? <span className="mt-2 block text-amber-200">{item.availabilityWarning}</span> : null}
                         </span>
                       </span>
                     </button>
@@ -569,6 +577,21 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
                   </div>
                 </div>
 
+                {selected.mediaType === 'anime' ? (
+                  <section className="mt-6 flex flex-wrap items-end gap-4" aria-label="Anime episode selection">
+                    <label className="text-sm">Episode{selected.episodes ? ` (1–${selected.episodes})` : ' (availability varies)'}
+                      <Input type="number" min="1" max={selected.episodes || undefined} step="1" value={animeEpisode} onChange={(event) => setAnimeEpisode(Number(event.target.value))} className="mt-2 w-28" />
+                    </label>
+                    <label className="text-sm">Audio
+                      <select className="mt-2 block rounded-lg border border-border bg-panel p-2" value={audioLanguage} onChange={(event) => setAudioLanguage(event.target.value)}>
+                        <option value="sub">Japanese · Sub</option>
+                        <option value="dub">English · Dub</option>
+                      </select>
+                    </label>
+                    <Button disabled={!Number.isSafeInteger(animeEpisode) || animeEpisode < 1 || Boolean(selected.episodes && animeEpisode > selected.episodes)} onClick={() => submitProposal({ ...selected, episode: animeEpisode, audioLanguage })}>Invite to watch episode</Button>
+                    <p className="w-full text-xs text-muted-foreground">AniList supplies metadata, not streams. Episode and dub availability depend on the selected provider. Search sequels separately by title.</p>
+                  </section>
+                ) : null}
                 {selected.mediaType === 'tv' ? (
                   <section
                     className="border-border mt-7 border-t pt-5"
@@ -658,9 +681,9 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
                     setQuery(event.target.value);
                     setPage(1);
                   }}
-                  placeholder="Search movies and TV shows"
+                  placeholder={selectedProvider.catalog === 'anilist' ? 'Search anime on AniList' : 'Search movies and TV shows'}
                   className="pl-9"
-                  aria-label="Search movies and TV shows"
+                  aria-label={selectedProvider.catalog === 'anilist' ? 'Search anime on AniList' : 'Search movies and TV shows'}
                 />
               </div>
             </div>
@@ -741,15 +764,14 @@ export const WatchCatalog = ({ open, onClose, onProposal }) => {
         )}
         <footer className="border-border text-subtle-foreground shrink-0 border-t px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] text-[10px] leading-4 sm:px-6">
           <a
-            href="https://www.themoviedb.org"
+            href={selectedProvider?.catalog === 'anilist' ? 'https://anilist.co' : 'https://www.themoviedb.org'}
             target="_blank"
             rel="noreferrer"
             className="text-muted-foreground hover:text-foreground font-semibold underline-offset-2 hover:underline"
           >
-            TMDB metadata
+            {selectedProvider?.catalog === 'anilist' ? 'AniList metadata' : 'TMDB metadata'}
           </a>
-          {' · '}This product uses the TMDB API but is not endorsed or certified
-          by TMDB.
+          {' · '}{selectedProvider?.catalog === 'anilist' ? 'Anime metadata is fetched directly from AniList in your browser.' : 'This product uses the TMDB API but is not endorsed or certified by TMDB.'}
         </footer>
       </DialogContent>
     </Dialog>

@@ -10,6 +10,8 @@ const readManifest = async (filename) =>
   );
 
 const EXPECTED_PROVIDER_ORIGINS = [
+  'https://anixo.buzz/*',
+  'https://supaplay.fun/*',
   'https://www.vidking.net/*',
   'https://zoryva.me/*',
   'https://www.2embed.cc/*',
@@ -29,7 +31,7 @@ test('keeps the Chromium MV3 background manifest Chrome-only', async () => {
   const manifest = await readManifest('manifest.json');
 
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.version).toBe('0.5.1');
+  expect(manifest.version).toBe('0.6.0');
   expect(manifest.background.service_worker).toBe('background.js');
   expect('scripts' in manifest.background).toBe(false);
   expect('browser_specific_settings' in manifest).toBe(false);
@@ -40,7 +42,7 @@ test('keeps the Firefox MV3 background manifest Firefox-only', async () => {
   const manifest = await readManifest('manifest.firefox.json');
 
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.version).toBe('0.5.1');
+  expect(manifest.version).toBe('0.6.0');
   expect(manifest.background.scripts).toEqual(['background.js']);
   expect('service_worker' in manifest.background).toBe(false);
   expect(typeof manifest.browser_specific_settings.gecko.id).toBe('string');

@@ -2,9 +2,11 @@
   "manifest_version": 3,
   "name": "PairBeam Watch Sync",
   "description": "Synchronizes playback controls on explicitly selected PairBeam watch providers without reading or relaying media URLs.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "permissions": ["tabs", "webNavigation"],
   "host_permissions": [
+    "https://anixo.buzz/*",
+    "https://supaplay.fun/*",
     "https://www.vidking.net/*",
     "https://zoryva.me/*",
     "https://zoryvax.neonnexusx.games/*",
@@ -44,6 +46,8 @@
     {
       "matches": [
         "https://www.vidking.net/*",
+        "https://anixo.buzz/*",
+        "https://supaplay.fun/*",
         "https://zoryva.me/*",
         "https://zoryvax.neonnexusx.games/*",
         "https://www.2embed.cc/*",

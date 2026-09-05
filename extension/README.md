@@ -6,7 +6,7 @@ This cross-browser MV3 extension lets PairBeam observe and control an ordinary v
 
 Both participants must install the extension. PairBeam detects the current browser and offers the matching archive.
 
-Multi-provider sessions require extension 0.5.1 or newer. PairBeam detects an older installed build and asks the user to download the current archive, reload the extension, and reload the room tab.
+Multi-provider sessions require extension 0.6.0 or newer, which includes AniXo and SupaPlay anime embed permissions. PairBeam detects an older installed build and asks the user to download the current archive, reload the extension, and reload the room tab. Provider permissions do not guarantee that a title is available upstream.
 
 ### Chrome, Edge, Opera, and Chromium
 

@@ -8,6 +8,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { tmdbCatalog } from '../lib/catalogApi';
+import { AnimeEpisodeDrawer } from './AnimeEpisodeDrawer';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from './ui/sheet';
 
@@ -83,6 +84,7 @@ export const SeriesEpisodeDrawer = ({ media, onSelect, hidden = false }) => {
     return () => window.cancelAnimationFrame(frame);
   }, [open, seasons.length, selectedSeason]);
 
+  if (media?.mediaType === 'anime') return <AnimeEpisodeDrawer media={media} onSelect={onSelect} hidden={hidden} />;
   if (media?.mediaType !== 'tv') return null;
 
   const scrollSeasons = (direction) => {
